@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PAID
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String
+  name         String
+  role         Role
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  invoices     Invoice[] @relation("InvoiceCreatedBy")
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  invoiceNo      String        @unique
+  date           DateTime      @default(now())
+  dateOfDelivery DateTime?
+  placeOfSupply  String?
+  modeOfPayment  String?
+  additionalInfo String?
+  status         InvoiceStatus @default(UNPAID)
+  customer       Customer?     @relation(fields: [customerId], references: [id])
+  customerId     String?
+  taxEnabled     Boolean       @default(false)
+  taxPercent     Float         @default(0)
+  subtotal       Float
+  taxAmount      Float
+  total          Float
+  items          InvoiceItem[]
+  createdAt      DateTime      @default(now())
+  createdBy      User?         @relation("InvoiceCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdByUserId String?
+}
+
+model InvoiceItem {
+  id        String   @id @default(cuid())
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id])
+  invoiceId String
+  reference String?
+  name      String
+  price     Float
+  quantity  Float
+  lineTotal Float
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productId String?
+}
+
+model Product {
+  id        String        @id @default(cuid())
+  reference String        @unique
+  name      String
+  price     Float
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  items     InvoiceItem[]
+}
+
+model Customer {
+  id        String    @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  taxId     String?
+  createdAt DateTime  @default(now())
+  invoices  Invoice[]
+}
+
+model BusinessSettings {
+  id           String  @id @default("default")
+  businessName String
+  address      String?
+  phone        String?
+  fax          String?
+  email        String?
+  taxId        String?
+  defaultTax   Float   @default(0)
+
+  // Dot-matrix pre-printed stationery print calibration
+  dmOffsetXMm    Float @default(0)
+  dmOffsetYMm    Float @default(0)
+  dmFontSizePt   Float @default(10)
+  dmItemRowMm    Float @default(6)
+}
