@@ -6,6 +6,7 @@ import { computeInvoiceTotals, computeLineTotal } from "@/lib/invoice-math";
 import { findProductByExactName } from "@/lib/products";
 import { createProductWithReference } from "@/app/actions/products";
 import { requireUser, requireAdmin } from "@/lib/auth-guard";
+import { tinError } from "@/lib/validation";
 
 export type InvoiceItemInput = {
   reference: string;
@@ -42,16 +43,24 @@ export type CreateInvoiceResult =
 
 const INVOICE_TIME_ZONE = "Asia/Colombo";
 
-function todayDatePrefix(): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
+// Invoice number format per Gazette Extraordinary No. 2481/22 (effective
+// 2026-07-01): YYMMM_QQQQ_XXXXX — YY+MMM (year + uppercase month) with no
+// separator between them, then the business's unit/branch code, then a
+// zero-padded serial. The counter resets monthly (the prefix is YYMMM, not
+// a full date), unlike the old per-day INV-YYYYMMDD-NN scheme this replaces.
+const DEFAULT_INVOICE_UNIT_CODE = "SRY";
+const INVOICE_UNIT_CODE_MAX_LEN = 10; // keeps the total well under the gazette's 40-char cap
+const INVOICE_SERIAL_DIGITS = 5;
+
+function invoiceYearMonthPrefix(): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: INVOICE_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
+    year: "2-digit",
+    month: "short",
   }).formatToParts(new Date());
 
   const lookup = Object.fromEntries(parts.map((p) => [p.type, p.value]));
-  return `${lookup.year}${lookup.month}${lookup.day}`;
+  return `${lookup.year}${lookup.month.toUpperCase()}`;
 }
 
 function validate(input: CreateInvoiceInput): string | null {
@@ -59,6 +68,11 @@ function validate(input: CreateInvoiceInput): string | null {
   // requirement) — a plain non-VAT sale can be recorded without them.
   if (input.taxEnabled && (!input.billTo?.name || !input.billTo.name.trim())) {
     return "Bill To name is required when VAT is applied.";
+  }
+
+  const purchaserTinError = tinError(input.billTo?.taxId ?? "");
+  if (purchaserTinError) {
+    return `Purchaser's TIN: ${purchaserTinError}`;
   }
 
   if (!Array.isArray(input.items) || input.items.length === 0) {
@@ -234,17 +248,26 @@ export async function createInvoice(
   const customer = await upsertCustomer(input.billTo);
   const resolvedItems = await resolveInvoiceItems(input.items);
 
-  const datePrefix = todayDatePrefix();
-  const prefix = `INV-${datePrefix}-`;
+  const businessSettings = await prisma.businessSettings.findUnique({
+    where: { id: "default" },
+    select: { invoiceUnitCode: true },
+  });
+  const unitCode = (businessSettings?.invoiceUnitCode || DEFAULT_INVOICE_UNIT_CODE).slice(
+    0,
+    INVOICE_UNIT_CODE_MAX_LEN
+  );
 
-  const todayCount = await prisma.invoice.count({
+  const yearMonth = invoiceYearMonthPrefix();
+  const prefix = `${yearMonth}_${unitCode}_`;
+
+  const monthCount = await prisma.invoice.count({
     where: { invoiceNo: { startsWith: prefix } },
   });
 
   const MAX_ATTEMPTS = 5;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const sequence = todayCount + 1 + attempt;
-    const invoiceNo = `${prefix}${String(sequence).padStart(2, "0")}`;
+    const sequence = monthCount + 1 + attempt;
+    const invoiceNo = `${prefix}${String(sequence).padStart(INVOICE_SERIAL_DIGITS, "0")}`;
 
     try {
       const invoice = await prisma.invoice.create({

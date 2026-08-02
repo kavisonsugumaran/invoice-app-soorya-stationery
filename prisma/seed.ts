@@ -85,6 +85,7 @@ async function main() {
       email: "sooryato19@gmail.com",
       taxId: "0000000",
       defaultTax: 10,
+      invoiceUnitCode: "SRY",
     },
   });
 
@@ -134,15 +135,17 @@ async function main() {
   dates.sort((a, b) => a.getTime() - b.getTime());
 
   console.log(`Seeding ${dates.length} invoices...`);
-  const dailyCounters = new Map<string, number>();
+  // Gazette 2481/22 format: YYMMM_QQQQ_XXXXX, counter resets each month.
+  const MONTH_ABBR = [
+    "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+  ];
+  const monthCounters = new Map<string, number>();
 
   for (const date of dates) {
-    const dateKey = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(
-      date.getDate()
-    ).padStart(2, "0")}`;
-    const seq = (dailyCounters.get(dateKey) ?? 0) + 1;
-    dailyCounters.set(dateKey, seq);
-    const invoiceNo = `INV-${dateKey}-${String(seq).padStart(2, "0")}`;
+    const yearMonthPrefix = `${String(date.getFullYear()).slice(-2)}${MONTH_ABBR[date.getMonth()]}_SRY_`;
+    const seq = (monthCounters.get(yearMonthPrefix) ?? 0) + 1;
+    monthCounters.set(yearMonthPrefix, seq);
+    const invoiceNo = `${yearMonthPrefix}${String(seq).padStart(5, "0")}`;
 
     const itemCount = randomInt(1, 4);
     const items = Array.from({ length: itemCount }, () => {

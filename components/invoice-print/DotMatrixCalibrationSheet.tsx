@@ -83,7 +83,7 @@ export default function DotMatrixCalibrationSheet({
         {showBackgroundImage && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src="/pre-printed-invoice-form.webp"
+            src="/pre-printed-invoice-form.jpg"
             alt=""
             className="print:hidden"
             style={{
@@ -98,6 +98,12 @@ export default function DotMatrixCalibrationSheet({
         )}
 
         <Mark pos={DM_LAYOUT.dateOfInvoice} calibration={calibration} label="Date of Invoice" />
+        <Mark pos={DM_LAYOUT.taxInvoiceLabel} calibration={calibration} label="Tax Invoice (VAT only)" />
+        <Mark
+          pos={DM_LAYOUT.taxInvoiceNoLabel}
+          calibration={calibration}
+          label="Tax Invoice No. label (VAT only)"
+        />
         <Mark pos={DM_LAYOUT.invoiceNo} calibration={calibration} label="Invoice No." />
 
         <Mark pos={DM_LAYOUT.purchaserTin} calibration={calibration} label="Purchaser TIN" />

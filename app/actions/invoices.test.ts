@@ -65,6 +65,66 @@ describe("createInvoice", () => {
 
     expect(result).toEqual({ success: false, error: "Please sign in." });
   });
+
+  // Gazette Extraordinary No. 2481/22: YYMMM_QQQQ_XXXXX, <=40 chars, no spaces.
+  const GAZETTE_2481_22_FORMAT = /^\d{2}[A-Z]{3}_[A-Z0-9]+_\d{5}$/;
+
+  it("generates an invoice number matching the Gazette 2481/22 format, falling back to the default unit code when no BusinessSettings row exists", async () => {
+    const user = await createTestUser("USER");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+    });
+
+    // resetDb() (beforeEach) wipes BusinessSettings, so this exercises the
+    // no-row fallback path.
+    const result = await createInvoice(baseInvoiceInput);
+    if (!result.success) throw new Error("expected success");
+
+    expect(result.invoiceNo).toMatch(GAZETTE_2481_22_FORMAT);
+    expect(result.invoiceNo.length).toBeLessThanOrEqual(40);
+    expect(result.invoiceNo).not.toContain(" ");
+    expect(result.invoiceNo).toContain("_SRY_");
+  });
+
+  it("uses the configured BusinessSettings.invoiceUnitCode when set", async () => {
+    await prisma.businessSettings.create({
+      data: { id: "default", businessName: "Test Shop", invoiceUnitCode: "TST" },
+    });
+    const user = await createTestUser("USER");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+    });
+
+    const result = await createInvoice(baseInvoiceInput);
+    if (!result.success) throw new Error("expected success");
+
+    expect(result.invoiceNo).toMatch(GAZETTE_2481_22_FORMAT);
+    expect(result.invoiceNo).toContain("_TST_");
+  });
+
+  it("assigns sequential serials within the same month prefix", async () => {
+    const user = await createTestUser("USER");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+    });
+
+    const first = await createInvoice(baseInvoiceInput);
+    const second = await createInvoice(baseInvoiceInput);
+    if (!first.success || !second.success) throw new Error("expected success");
+
+    const prefix = first.invoiceNo.slice(0, first.invoiceNo.lastIndexOf("_") + 1);
+    expect(second.invoiceNo).toBe(`${prefix}00002`);
+    expect(first.invoiceNo).toBe(`${prefix}00001`);
+  });
 });
 
 describe("updateInvoice", () => {
