@@ -18,6 +18,7 @@ import CustomerAutocomplete, {
 import ItemAutocomplete, {
   type ProductOption,
 } from "@/components/invoice-form/ItemAutocomplete";
+import { tinError, TIN_LENGTH } from "@/lib/validation";
 
 const PAYMENT_MODES = ["Cash", "Card", "Bank Transfer", "Cheque"] as const;
 
@@ -84,6 +85,7 @@ export default function InvoiceForm(props: InvoiceFormProps) {
   const [billToPhone, setBillToPhone] = useState(initial?.billTo.phone ?? "");
   const [billToAddress, setBillToAddress] = useState(initial?.billTo.address ?? "");
   const [billToTaxId, setBillToTaxId] = useState(initial?.billTo.taxId ?? "");
+  const [billToTaxIdError, setBillToTaxIdError] = useState<string | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
     initial?.billTo.customerId ?? null
   );
@@ -135,6 +137,12 @@ export default function InvoiceForm(props: InvoiceFormProps) {
     e.preventDefault();
     setError(null);
     setSuccessMessage(null);
+
+    const taxIdValidationError = tinError(billToTaxId);
+    setBillToTaxIdError(taxIdValidationError);
+    if (taxIdValidationError) {
+      return;
+    }
 
     const payload = {
       items: items.map(({ reference, name, price, quantity, productId }) => ({
@@ -214,13 +222,27 @@ export default function InvoiceForm(props: InvoiceFormProps) {
             placeholder="Phone"
             className="rounded-md border border-border bg-transparent px-3 py-2 text-sm"
           />
-          <input
-            type="text"
-            value={billToTaxId}
-            onChange={(e) => setBillToTaxId(e.target.value)}
-            placeholder="Purchaser's TIN"
-            className="rounded-md border border-border bg-transparent px-3 py-2 text-sm"
-          />
+          <div className="flex flex-col gap-1">
+            <input
+              type="text"
+              inputMode="numeric"
+              value={billToTaxId}
+              onChange={(e) => {
+                setBillToTaxId(e.target.value.replace(/\D/g, "").slice(0, TIN_LENGTH));
+                setBillToTaxIdError(null);
+              }}
+              onBlur={() => setBillToTaxIdError(tinError(billToTaxId))}
+              placeholder="Purchaser's TIN"
+              maxLength={TIN_LENGTH}
+              aria-invalid={billToTaxIdError ? true : undefined}
+              className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm"
+            />
+            {billToTaxIdError && (
+              <span role="alert" className="text-xs text-danger">
+                {billToTaxIdError}
+              </span>
+            )}
+          </div>
           <input
             type="text"
             value={billToAddress}
@@ -235,7 +257,7 @@ export default function InvoiceForm(props: InvoiceFormProps) {
         <h2 className="text-sm font-semibold text-muted-foreground">Invoice Details</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            Date of Delivery
+            Date of Supply
             <input
               type="date"
               value={dateOfDelivery}

@@ -94,6 +94,11 @@ model BusinessSettings {
   taxId        String?
   defaultTax   Float   @default(0)
 
+  // Invoice numbering (Gazette 2481/22): the "branch/unit/project" code
+  // slotted into YYMMM_QQQQ_XXXXX. No settings UI edits this yet — same as
+  // businessName/taxId above, it's set via seed/direct DB update for now.
+  invoiceUnitCode String @default("SRY")
+
   // Dot-matrix pre-printed stationery print calibration
   dmOffsetXMm    Float @default(0)
   dmOffsetYMm    Float @default(0)

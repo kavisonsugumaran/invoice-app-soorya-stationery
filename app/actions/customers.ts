@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { findCustomerByPhone } from "@/lib/customers";
 import { requireUser, requireAdmin } from "@/lib/auth-guard";
+import { tinError } from "@/lib/validation";
 
 export type CustomerFormInput = {
   name: string;
@@ -24,6 +25,10 @@ function validate(input: CustomerFormInput): string | null {
   }
   if (input.email.trim() && !EMAIL_PATTERN.test(input.email.trim())) {
     return "Enter a valid email address.";
+  }
+  const taxIdError = tinError(input.taxId);
+  if (taxIdError) {
+    return taxIdError;
   }
   return null;
 }

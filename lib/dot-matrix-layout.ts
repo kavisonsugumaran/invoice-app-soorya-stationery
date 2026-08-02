@@ -8,17 +8,24 @@
 // dmOffsetXMm/dmOffsetYMm values in Settings.
 //
 // Coordinates are percentages of the page, measured visually against the
-// actual reference photo of the stationery (public/pre-printed-invoice-form.webp,
+// actual reference photo of the stationery (public/pre-printed-invoice-form.jpg,
 // rendered as the background in DotMatrixInvoice / DotMatrixCalibrationSheet
 // on screen). They still have NOT been calibrated against a real printer —
 // the image only validates layout proportions, not printer-specific margin
 // drift. Use the Settings page's mm offsets for that once real hardware is
 // available.
 //
-// The Supplier's TIN/Name/Address/E-mail/Telephone/Fax are already
+// The Supplier's TIN/Name/Address/E-mail/Telephone/WhatsApp are already
 // pre-printed on the stationery (they're the shop's own static details) —
 // do NOT print over them. Only the Purchaser side and invoice-specific
 // fields are blank on the physical form.
+//
+// As of the 2026-07 paper revision, the stationery printer stopped
+// pre-printing "TAX INVOICE" and the "Tax Invoice No." label on the page —
+// that whole area is now a blank box. Both are only meaningful for VAT tax
+// invoices, so DotMatrixInvoice only renders taxInvoiceLabel/taxInvoiceNoLabel
+// (plus the existing invoiceNo value) when taxEnabled is true; a plain
+// non-VAT invoice leaves that area blank, matching the paper.
 
 // The reference image is 1381x1600px (ratio 0.863), noticeably wider than
 // US Letter (0.774) — consistent with standard 9.5in continuous fanfold
@@ -35,7 +42,10 @@ export type FieldPos = {
 
 export const DM_LAYOUT = {
   dateOfInvoice: { xPct: 23, yPct: 10.4 } as FieldPos,
-  invoiceNo: { xPct: 63.5, yPct: 10.4 } as FieldPos,
+  // Only rendered when taxEnabled — the paper no longer pre-prints either of these.
+  taxInvoiceLabel: { xPct: 41, yPct: 6.9 } as FieldPos,
+  taxInvoiceNoLabel: { xPct: 49, yPct: 10.3 } as FieldPos,
+  invoiceNo: { xPct: 63.5, yPct: 10.3 } as FieldPos,
 
   purchaserTin: { xPct: 63.5, yPct: 13.8 } as FieldPos,
   purchaserName: { xPct: 63.7, yPct: 15.6 } as FieldPos,

@@ -3,6 +3,7 @@
 import { Printer } from "lucide-react";
 import { computeLineTotal } from "@/lib/invoice-math";
 import { amountToWords } from "@/lib/number-to-words";
+import { formatInvoiceDate } from "@/lib/date-format";
 
 const NAVY = "#1c4a86";
 const NAVY_LIGHT = "#dbe4f7";
@@ -113,7 +114,7 @@ export default function InvoicePreview({
             <span className="font-bold" style={{ color: NAVY }}>
               Date of Invoice
             </span>
-            <span className="ml-1">: {invoiceDate.toLocaleDateString("en-CA")}</span>
+            <span className="ml-1">: {formatInvoiceDate(invoiceDate)}</span>
           </div>
           <div className="px-3 py-2 text-sm">
             <span className="font-bold" style={{ color: NAVY }}>
@@ -147,14 +148,14 @@ export default function InvoicePreview({
           </div>
         </div>
 
-        {/* Date of Delivery / Place of Supply */}
+        {/* Date of Supply / Place of Supply */}
         <div className="grid grid-cols-2 border border-t-0" style={{ borderColor: NAVY }}>
           <div className="border-r px-3 py-2 text-sm" style={{ borderColor: NAVY }}>
             <span className="font-bold" style={{ color: NAVY }}>
-              Date of Delivery
+              Date of Supply
             </span>
             <span className="ml-1">
-              : {dateOfDelivery ? dateOfDelivery.toLocaleDateString("en-CA") : ""}
+              : {dateOfDelivery ? formatInvoiceDate(dateOfDelivery) : ""}
             </span>
           </div>
           <div className="px-3 py-2 text-sm">

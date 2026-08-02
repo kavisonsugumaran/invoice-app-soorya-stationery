@@ -3,6 +3,7 @@
 import { Printer } from "lucide-react";
 import { computeLineTotal } from "@/lib/invoice-math";
 import { amountToWords } from "@/lib/number-to-words";
+import { formatInvoiceDate } from "@/lib/date-format";
 import {
   DM_LAYOUT,
   DM_PAGE_WIDTH_MM,
@@ -100,6 +101,64 @@ function Field({
   );
 }
 
+// Sampled from the shop's own header text in the reference photo (public/pre-printed-invoice-form.jpg).
+const SHOP_BLUE = "#004EA3";
+
+/**
+ * The dot-matrix printer only prints black — it can't lay down a solid
+ * color fill, so the rounded blue pill is screen-only (matches how the old
+ * paper stock used to have it pre-printed). What actually prints is plain
+ * bold text at the same position, same as every other field here.
+ */
+function TaxInvoiceBadge({
+  pos,
+  calibration,
+}: {
+  pos: FieldPos;
+  calibration: DmCalibration;
+}) {
+  const { leftMm, topMm } = resolvePosition(pos, calibration);
+  return (
+    <>
+      <div
+        className="print:hidden"
+        style={{
+          position: "absolute",
+          left: `${leftMm}mm`,
+          top: `${topMm}mm`,
+          transform: "translate(0, -50%)",
+          backgroundColor: SHOP_BLUE,
+          color: "#fff",
+          fontWeight: 700,
+          fontSize: `${calibration.dmFontSizePt}pt`,
+          fontFamily: "Arial, Helvetica, sans-serif",
+          padding: "1.2mm 4mm",
+          borderRadius: "3mm",
+          whiteSpace: "nowrap",
+        }}
+      >
+        TAX INVOICE
+      </div>
+      <div
+        className="hidden print:block"
+        style={{
+          position: "absolute",
+          left: `${leftMm}mm`,
+          top: `${topMm}mm`,
+          transform: "translate(0, -50%)",
+          fontWeight: 700,
+          fontSize: `${calibration.dmFontSizePt}pt`,
+          fontFamily: "Arial, Helvetica, sans-serif",
+          whiteSpace: "nowrap",
+          color: "#000",
+        }}
+      >
+        TAX INVOICE
+      </div>
+    </>
+  );
+}
+
 export default function DotMatrixInvoice({
   calibration,
   invoiceNo,
@@ -147,7 +206,7 @@ export default function DotMatrixInvoice({
         {showBackgroundImage && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src="/pre-printed-invoice-form.webp"
+            src="/pre-printed-invoice-form.jpg"
             alt=""
             className="print:hidden"
             style={{
@@ -162,11 +221,26 @@ export default function DotMatrixInvoice({
         )}
 
         <Field pos={DM_LAYOUT.dateOfInvoice} calibration={calibration}>
-          {invoiceDate.toLocaleDateString("en-CA")}
+          {formatInvoiceDate(invoiceDate)}
         </Field>
-        <Field pos={DM_LAYOUT.invoiceNo} calibration={calibration}>
-          {invoiceNo ?? ""}
-        </Field>
+        {taxEnabled && (
+          <>
+            <TaxInvoiceBadge pos={DM_LAYOUT.taxInvoiceLabel} calibration={calibration} />
+            <Field pos={DM_LAYOUT.taxInvoiceNoLabel} calibration={calibration}>
+              Tax Invoice No. :
+            </Field>
+            <Field pos={DM_LAYOUT.invoiceNo} calibration={calibration}>
+              {/* Real invoices are only ever printed after saving, so this only
+                  shows pre-save, while drafting a New Invoice — the number
+                  isn't generated until the actual save (it's assigned from a
+                  count-of-today's-invoices + retry-on-conflict check, so it
+                  can't be safely known ahead of time with 3 terminals saving
+                  concurrently). A stale/guessed number here would be worse
+                  than an honest placeholder. */}
+              {invoiceNo || "(assigned on save)"}
+            </Field>
+          </>
+        )}
 
         <Field pos={DM_LAYOUT.purchaserTin} calibration={calibration}>
           {billTo.taxId}
@@ -187,7 +261,7 @@ export default function DotMatrixInvoice({
         </Field>
 
         <Field pos={DM_LAYOUT.dateOfDelivery} calibration={calibration}>
-          {dateOfDelivery ? dateOfDelivery.toLocaleDateString("en-CA") : ""}
+          {dateOfDelivery ? formatInvoiceDate(dateOfDelivery) : ""}
         </Field>
         <Field pos={DM_LAYOUT.placeOfSupply} calibration={calibration}>
           {placeOfSupply ?? ""}

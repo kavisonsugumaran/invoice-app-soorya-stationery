@@ -7,6 +7,7 @@ import {
   updateCustomer,
   type CustomerFormInput,
 } from "@/app/actions/customers";
+import { tinError, TIN_LENGTH } from "@/lib/validation";
 
 type ExistingCustomer = {
   id: string;
@@ -30,6 +31,7 @@ export default function CustomerForm(props: CustomerFormProps) {
   const [email, setEmail] = useState(initial?.email ?? "");
   const [address, setAddress] = useState(initial?.address ?? "");
   const [taxId, setTaxId] = useState(initial?.taxId ?? "");
+  const [taxIdError, setTaxIdError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -38,6 +40,12 @@ export default function CustomerForm(props: CustomerFormProps) {
     e.preventDefault();
     setError(null);
     setSuccessMessage(null);
+
+    const taxIdValidationError = tinError(taxId);
+    setTaxIdError(taxIdValidationError);
+    if (taxIdValidationError) {
+      return;
+    }
 
     const input: CustomerFormInput = { name, phone, email, address, taxId };
 
@@ -130,10 +138,22 @@ export default function CustomerForm(props: CustomerFormProps) {
         <input
           id="customer-tax-id"
           type="text"
+          inputMode="numeric"
           value={taxId}
-          onChange={(e) => setTaxId(e.target.value)}
+          onChange={(e) => {
+            setTaxId(e.target.value.replace(/\D/g, "").slice(0, TIN_LENGTH));
+            setTaxIdError(null);
+          }}
+          onBlur={() => setTaxIdError(tinError(taxId))}
+          maxLength={TIN_LENGTH}
+          aria-invalid={taxIdError ? true : undefined}
           className="rounded-md border border-border bg-transparent px-3 py-2 text-sm"
         />
+        {taxIdError && (
+          <span role="alert" className="text-xs text-danger">
+            {taxIdError}
+          </span>
+        )}
       </div>
 
       {error && (
