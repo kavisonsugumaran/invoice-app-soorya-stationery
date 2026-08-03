@@ -60,7 +60,7 @@ export const DM_LAYOUT = {
   // Items table: row Y = itemsFirstRowYPct + (rowIndex * dmItemRowMm converted to %)
   itemsFirstRowYPct: 41,
   itemsColRef: { xPct: 9, yPct: 0, align: "left" } as FieldPos,
-  itemsColDescription: { xPct: 18, yPct: 0, align: "left" } as FieldPos,
+  itemsColDescription: { xPct: 19, yPct: 0, align: "left" } as FieldPos,
   itemsColQty: { xPct: 65, yPct: 0, align: "right" } as FieldPos,
   itemsColUnitPrice: { xPct: 75, yPct: 0, align: "right" } as FieldPos,
   itemsColAmount: { xPct: 91, yPct: 0, align: "right" } as FieldPos,

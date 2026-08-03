@@ -1,22 +1,35 @@
 import Link from "next/link";
-import { Plus, Search } from "lucide-react";
+import { Plus } from "lucide-react";
 import ProductsTable from "@/components/products/ProductsTable";
-import { getAllProducts } from "@/lib/products";
+import ListFilterBar from "@/components/ui/ListFilterBar";
+import { getAllProducts, DEFAULT_PRODUCT_SORT } from "@/lib/products";
+
+const SORT_OPTIONS = [
+  { value: "name_asc", label: "Name (A–Z)" },
+  { value: "name_desc", label: "Name (Z–A)" },
+  { value: "price_asc", label: "Price (Low–High)" },
+  { value: "price_desc", label: "Price (High–Low)" },
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+];
 
 export default async function ProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; sort?: string }>;
 }) {
-  const { page, q } = await searchParams;
+  const { page, q, sort } = await searchParams;
   const requestedPage = Number(page) || 1;
-  const { products, pageCount, currentPage, totalCount } = await getAllProducts(
-    requestedPage,
-    q
-  );
+  const { products, pageCount, currentPage, totalCount, sort: resolvedSort } =
+    await getAllProducts(requestedPage, q, sort);
 
-  const pageHref = (targetPage: number) =>
-    `/products?page=${targetPage}${q ? `&q=${encodeURIComponent(q)}` : ""}`;
+  const pageHref = (targetPage: number) => {
+    const params = new URLSearchParams();
+    params.set("page", String(targetPage));
+    if (q) params.set("q", q);
+    if (resolvedSort !== DEFAULT_PRODUCT_SORT) params.set("sort", resolvedSort);
+    return `/products?${params}`;
+  };
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -31,21 +44,14 @@ export default async function ProductsPage({
         </Link>
       </div>
 
-      <form action="/products" method="GET" className="max-w-sm">
-        <div className="relative">
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
-          <input
-            type="text"
-            name="q"
-            defaultValue={q ?? ""}
-            placeholder="Search by name or reference..."
-            className="w-full rounded-lg border border-border bg-surface py-2 pl-9 pr-3 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-          />
-        </div>
-      </form>
+      <ListFilterBar
+        basePath="/products"
+        initialQuery={q ?? ""}
+        initialSort={resolvedSort}
+        defaultSort={DEFAULT_PRODUCT_SORT}
+        sortOptions={SORT_OPTIONS}
+        searchPlaceholder="Search by name or reference..."
+      />
 
       <p className="text-sm text-muted-foreground">
         {totalCount} product{totalCount === 1 ? "" : "s"}

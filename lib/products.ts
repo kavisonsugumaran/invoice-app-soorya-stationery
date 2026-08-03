@@ -4,9 +4,26 @@ import { round2 } from "@/lib/invoice-math";
 
 const PAGE_SIZE = 20;
 
-export async function getAllProducts(page = 1, query?: string) {
+export const PRODUCT_SORT_OPTIONS = {
+  name_asc: { name: "asc" },
+  name_desc: { name: "desc" },
+  price_asc: { price: "asc" },
+  price_desc: { price: "desc" },
+  newest: { createdAt: "desc" },
+  oldest: { createdAt: "asc" },
+} as const satisfies Record<string, Prisma.ProductOrderByWithRelationInput>;
+
+export type ProductSort = keyof typeof PRODUCT_SORT_OPTIONS;
+export const DEFAULT_PRODUCT_SORT: ProductSort = "name_asc";
+
+function resolveProductSort(sort?: string): ProductSort {
+  return sort && sort in PRODUCT_SORT_OPTIONS ? (sort as ProductSort) : DEFAULT_PRODUCT_SORT;
+}
+
+export async function getAllProducts(page = 1, query?: string, sort?: string) {
   const currentPage = Math.max(1, page);
   const trimmedQuery = query?.trim();
+  const resolvedSort = resolveProductSort(sort);
 
   const where: Prisma.ProductWhereInput | undefined = trimmedQuery
     ? {
@@ -20,7 +37,7 @@ export async function getAllProducts(page = 1, query?: string) {
   const [products, totalCount] = await Promise.all([
     prisma.product.findMany({
       where,
-      orderBy: { name: "asc" },
+      orderBy: PRODUCT_SORT_OPTIONS[resolvedSort],
       skip: (currentPage - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       select: {
@@ -51,6 +68,7 @@ export async function getAllProducts(page = 1, query?: string) {
     totalCount,
     pageCount: Math.max(1, Math.ceil(totalCount / PAGE_SIZE)),
     currentPage,
+    sort: resolvedSort,
   };
 }
 

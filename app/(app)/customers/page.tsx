@@ -1,22 +1,33 @@
 import Link from "next/link";
-import { Plus, Search } from "lucide-react";
+import { Plus } from "lucide-react";
 import CustomersTable from "@/components/customers/CustomersTable";
-import { getAllCustomers } from "@/lib/customers";
+import ListFilterBar from "@/components/ui/ListFilterBar";
+import { getAllCustomers, DEFAULT_CUSTOMER_SORT } from "@/lib/customers";
+
+const SORT_OPTIONS = [
+  { value: "name_asc", label: "Name (A–Z)" },
+  { value: "name_desc", label: "Name (Z–A)" },
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+];
 
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; sort?: string }>;
 }) {
-  const { page, q } = await searchParams;
+  const { page, q, sort } = await searchParams;
   const requestedPage = Number(page) || 1;
-  const { customers, pageCount, currentPage, totalCount } = await getAllCustomers(
-    requestedPage,
-    q
-  );
+  const { customers, pageCount, currentPage, totalCount, sort: resolvedSort } =
+    await getAllCustomers(requestedPage, q, sort);
 
-  const pageHref = (targetPage: number) =>
-    `/customers?page=${targetPage}${q ? `&q=${encodeURIComponent(q)}` : ""}`;
+  const pageHref = (targetPage: number) => {
+    const params = new URLSearchParams();
+    params.set("page", String(targetPage));
+    if (q) params.set("q", q);
+    if (resolvedSort !== DEFAULT_CUSTOMER_SORT) params.set("sort", resolvedSort);
+    return `/customers?${params}`;
+  };
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -31,21 +42,14 @@ export default async function CustomersPage({
         </Link>
       </div>
 
-      <form action="/customers" method="GET" className="max-w-sm">
-        <div className="relative">
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
-          <input
-            type="text"
-            name="q"
-            defaultValue={q ?? ""}
-            placeholder="Search by name, phone, or email..."
-            className="w-full rounded-lg border border-border bg-surface py-2 pl-9 pr-3 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-          />
-        </div>
-      </form>
+      <ListFilterBar
+        basePath="/customers"
+        initialQuery={q ?? ""}
+        initialSort={resolvedSort}
+        defaultSort={DEFAULT_CUSTOMER_SORT}
+        sortOptions={SORT_OPTIONS}
+        searchPlaceholder="Search by name, phone, or email..."
+      />
 
       <p className="text-sm text-muted-foreground">
         {totalCount} customer{totalCount === 1 ? "" : "s"}
