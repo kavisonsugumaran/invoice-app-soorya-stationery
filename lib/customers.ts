@@ -4,9 +4,24 @@ import { round2 } from "@/lib/invoice-math";
 
 const PAGE_SIZE = 20;
 
-export async function getAllCustomers(page = 1, query?: string) {
+export const CUSTOMER_SORT_OPTIONS = {
+  name_asc: { name: "asc" },
+  name_desc: { name: "desc" },
+  newest: { createdAt: "desc" },
+  oldest: { createdAt: "asc" },
+} as const satisfies Record<string, Prisma.CustomerOrderByWithRelationInput>;
+
+export type CustomerSort = keyof typeof CUSTOMER_SORT_OPTIONS;
+export const DEFAULT_CUSTOMER_SORT: CustomerSort = "name_asc";
+
+function resolveCustomerSort(sort?: string): CustomerSort {
+  return sort && sort in CUSTOMER_SORT_OPTIONS ? (sort as CustomerSort) : DEFAULT_CUSTOMER_SORT;
+}
+
+export async function getAllCustomers(page = 1, query?: string, sort?: string) {
   const currentPage = Math.max(1, page);
   const trimmedQuery = query?.trim();
+  const resolvedSort = resolveCustomerSort(sort);
 
   const where: Prisma.CustomerWhereInput | undefined = trimmedQuery
     ? {
@@ -21,7 +36,7 @@ export async function getAllCustomers(page = 1, query?: string) {
   const [customers, totalCount] = await Promise.all([
     prisma.customer.findMany({
       where,
-      orderBy: { name: "asc" },
+      orderBy: CUSTOMER_SORT_OPTIONS[resolvedSort],
       skip: (currentPage - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       select: {
@@ -52,6 +67,7 @@ export async function getAllCustomers(page = 1, query?: string) {
     totalCount,
     pageCount: Math.max(1, Math.ceil(totalCount / PAGE_SIZE)),
     currentPage,
+    sort: resolvedSort,
   };
 }
 

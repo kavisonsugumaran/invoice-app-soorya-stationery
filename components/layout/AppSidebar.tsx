@@ -20,7 +20,7 @@ const NAV_ITEMS = [
   { href: "/customers", label: "Customers", icon: Users, adminOnly: false },
   { href: "/products", label: "Products", icon: Package, adminOnly: false },
   { href: "/users", label: "Users", icon: UserCog, adminOnly: true },
-  { href: "/settings", label: "Settings", icon: Settings, adminOnly: true },
+  { href: "/settings", label: "Settings", icon: Settings, adminOnly: false },
 ];
 
 function isActive(pathname: string, href: string) {

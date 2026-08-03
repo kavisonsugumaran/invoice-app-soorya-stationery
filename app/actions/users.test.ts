@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "@/tests/reset-db";
 import { getCurrentUser } from "@/lib/dal";
-import { createUser, setUserActive } from "./users";
+import { createUser, setUserActive, changeOwnPassword } from "./users";
 
 vi.mock("@/lib/dal", () => ({
   getCurrentUser: vi.fn(),
@@ -17,6 +18,17 @@ async function createTestUser(role: "ADMIN" | "USER" = "USER") {
       name: `Test ${role}`,
       role,
       passwordHash: "not-a-real-hash",
+    },
+  });
+}
+
+async function createTestUserWithPassword(password: string, role: "ADMIN" | "USER" = "USER") {
+  return prisma.user.create({
+    data: {
+      username: `test-${role.toLowerCase()}-${Date.now()}-${Math.random()}`,
+      name: `Test ${role}`,
+      role,
+      passwordHash: await bcrypt.hash(password, 10),
     },
   });
 }
@@ -102,5 +114,76 @@ describe("setUserActive", () => {
     expect(result).toEqual({ success: true });
     const updated = await prisma.user.findUnique({ where: { id: staff.id } });
     expect(updated?.isActive).toBe(false);
+  });
+});
+
+describe("changeOwnPassword", () => {
+  it("rejects when not authenticated", async () => {
+    mockedGetCurrentUser.mockResolvedValue(null);
+
+    const result = await changeOwnPassword({
+      currentPassword: "whatever",
+      newPassword: "newpassword123",
+    });
+
+    expect(result).toEqual({ success: false, error: "Please sign in." });
+  });
+
+  it("rejects when the current password is wrong", async () => {
+    const staff = await createTestUserWithPassword("correct-password");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: staff.id,
+      username: staff.username,
+      name: staff.name,
+      role: staff.role,
+    });
+
+    const result = await changeOwnPassword({
+      currentPassword: "wrong-password",
+      newPassword: "newpassword123",
+    });
+
+    expect(result).toEqual({ success: false, error: "Current password is incorrect." });
+  });
+
+  it("lets a Staff (non-admin) user change their own password — self-service, no role restriction", async () => {
+    const staff = await createTestUserWithPassword("correct-password", "USER");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: staff.id,
+      username: staff.username,
+      name: staff.name,
+      role: staff.role,
+    });
+
+    const result = await changeOwnPassword({
+      currentPassword: "correct-password",
+      newPassword: "newpassword123",
+    });
+
+    expect(result).toEqual({ success: true });
+
+    const updated = await prisma.user.findUnique({ where: { id: staff.id } });
+    const newPasswordWorks = await bcrypt.compare("newpassword123", updated!.passwordHash);
+    expect(newPasswordWorks).toBe(true);
+  });
+
+  it("rejects a new password shorter than 8 characters", async () => {
+    const staff = await createTestUserWithPassword("correct-password");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: staff.id,
+      username: staff.username,
+      name: staff.name,
+      role: staff.role,
+    });
+
+    const result = await changeOwnPassword({
+      currentPassword: "correct-password",
+      newPassword: "short",
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: "Password must be at least 8 characters.",
+    });
   });
 });

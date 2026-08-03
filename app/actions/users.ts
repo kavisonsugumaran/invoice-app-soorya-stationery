@@ -3,7 +3,7 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import type { Role } from "@prisma/client";
-import { requireAdmin } from "@/lib/auth-guard";
+import { requireAdmin, requireUser } from "@/lib/auth-guard";
 import { findUserByUsername } from "@/lib/users";
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -83,5 +83,39 @@ export async function resetUserPassword(
     return { success: true };
   } catch {
     return { success: false, error: "Could not reset password." };
+  }
+}
+
+export type ChangePasswordInput = {
+  currentPassword: string;
+  newPassword: string;
+};
+
+// Self-service — any logged-in user (Admin or Staff) changing their OWN
+// password. Unlike resetUserPassword (Admin acting on someone else, no old
+// password needed), this requires the current password to verify it's really
+// the account owner at the keyboard, not just whoever the session belongs to
+// on a shared shop computer.
+export async function changeOwnPassword(input: ChangePasswordInput): Promise<ActionResult> {
+  const auth = await requireUser();
+  if (!auth.ok) return { success: false, error: auth.error };
+
+  const passwordError = validatePassword(input.newPassword);
+  if (passwordError) return { success: false, error: passwordError };
+
+  const user = await prisma.user.findUnique({ where: { id: auth.user.id } });
+  if (!user) return { success: false, error: "Could not change password." };
+
+  const currentPasswordMatches = await bcrypt.compare(input.currentPassword, user.passwordHash);
+  if (!currentPasswordMatches) {
+    return { success: false, error: "Current password is incorrect." };
+  }
+
+  const passwordHash = await bcrypt.hash(input.newPassword, 10);
+  try {
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+    return { success: true };
+  } catch {
+    return { success: false, error: "Could not change password." };
   }
 }
