@@ -8,6 +8,9 @@ import {
   type CustomerFormInput,
 } from "@/app/actions/customers";
 import { tinError, TIN_LENGTH } from "@/lib/validation";
+import { PHONE_LENGTH } from "@/lib/phone-format";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/ToastProvider";
 
 type ExistingCustomer = {
   id: string;
@@ -24,6 +27,7 @@ type CustomerFormProps =
 
 export default function CustomerForm(props: CustomerFormProps) {
   const router = useRouter();
+  const { showToast } = useToast();
   const initial = props.mode === "edit" ? props.customer : null;
 
   const [name, setName] = useState(initial?.name ?? "");
@@ -33,13 +37,12 @@ export default function CustomerForm(props: CustomerFormProps) {
   const [taxId, setTaxId] = useState(initial?.taxId ?? "");
   const [taxIdError, setTaxIdError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setSuccessMessage(null);
 
     const taxIdValidationError = tinError(taxId);
     setTaxIdError(taxIdValidationError);
@@ -47,6 +50,10 @@ export default function CustomerForm(props: CustomerFormProps) {
       return;
     }
 
+    setIsConfirmOpen(true);
+  }
+
+  function handleConfirm() {
     const input: CustomerFormInput = { name, phone, email, address, taxId };
 
     startTransition(async () => {
@@ -56,14 +63,17 @@ export default function CustomerForm(props: CustomerFormProps) {
           router.push(`/customers/${result.id}`);
         } else {
           setError(result.error);
+          setIsConfirmOpen(false);
         }
       } else {
         const result = await updateCustomer(props.customer.id, input);
         if (result.success) {
-          setSuccessMessage("Changes saved.");
+          showToast("Changes saved.");
+          setIsConfirmOpen(false);
           router.refresh();
         } else {
           setError(result.error);
+          setIsConfirmOpen(false);
         }
       }
     });
@@ -99,8 +109,10 @@ export default function CustomerForm(props: CustomerFormProps) {
         <input
           id="customer-phone"
           type="text"
+          inputMode="numeric"
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, PHONE_LENGTH))}
+          maxLength={PHONE_LENGTH}
           className="rounded-md border border-border bg-transparent px-3 py-2 text-sm"
         />
       </div>
@@ -161,11 +173,6 @@ export default function CustomerForm(props: CustomerFormProps) {
           {error}
         </p>
       )}
-      {successMessage && (
-        <p role="status" className="text-sm text-success">
-          {successMessage}
-        </p>
-      )}
 
       <button
         type="submit"
@@ -174,6 +181,21 @@ export default function CustomerForm(props: CustomerFormProps) {
       >
         {isPending ? "Saving..." : props.mode === "create" ? "Create Customer" : "Save Changes"}
       </button>
+
+      {isConfirmOpen && (
+        <ConfirmModal
+          title={props.mode === "create" ? "Create Customer?" : "Save Changes?"}
+          message={
+            props.mode === "create"
+              ? `Create a new customer record for "${name}"?`
+              : "Save these changes to the customer's details?"
+          }
+          confirmLabel={isPending ? "Saving..." : "Confirm"}
+          isPending={isPending}
+          onConfirm={handleConfirm}
+          onCancel={() => setIsConfirmOpen(false)}
+        />
+      )}
     </form>
   );
 }

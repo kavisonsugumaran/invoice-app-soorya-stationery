@@ -3,7 +3,8 @@
 import { prisma } from "@/lib/prisma";
 import { findCustomerByPhone } from "@/lib/customers";
 import { requireUser, requireAdmin } from "@/lib/auth-guard";
-import { tinError } from "@/lib/validation";
+import { tinError, emailError } from "@/lib/validation";
+import { normalizePhone } from "@/lib/phone-format";
 
 export type CustomerFormInput = {
   name: string;
@@ -17,14 +18,13 @@ export type CreateCustomerResult = { success: true; id: string } | { success: fa
 export type UpdateCustomerResult = { success: true } | { success: false; error: string };
 export type DeleteCustomerResult = { success: true } | { success: false; error: string };
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 function validate(input: CustomerFormInput): string | null {
   if (!input.name.trim()) {
     return "Customer name is required.";
   }
-  if (input.email.trim() && !EMAIL_PATTERN.test(input.email.trim())) {
-    return "Enter a valid email address.";
+  const emailValidationError = emailError(input.email);
+  if (emailValidationError) {
+    return emailValidationError;
   }
   const taxIdError = tinError(input.taxId);
   if (taxIdError) {
@@ -42,7 +42,7 @@ export async function createCustomer(input: CustomerFormInput): Promise<CreateCu
     return { success: false, error: validationError };
   }
 
-  const phone = input.phone.trim();
+  const phone = normalizePhone(input.phone);
   if (phone) {
     const existing = await findCustomerByPhone(phone);
     if (existing) {
@@ -78,7 +78,7 @@ export async function updateCustomer(
     return { success: false, error: validationError };
   }
 
-  const phone = input.phone.trim();
+  const phone = normalizePhone(input.phone);
   if (phone) {
     const existing = await findCustomerByPhone(phone, id);
     if (existing) {

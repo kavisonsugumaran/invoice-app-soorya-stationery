@@ -31,6 +31,10 @@ Two separate databases, switched via env file:
 
 `prisma` and `@prisma/client` are intentionally pinned to `6.19.3`, not the current major. Prisma 7 requires a `prisma.config.ts` + driver adapter and drops reading `DATABASE_URL` straight from `schema.prisma`'s `datasource` block, which this project relies on. Don't bump past 6.x without doing that migration deliberately (see `docs/TECH_STACK_DECISIONS.md`).
 
+### File storage (business logo)
+
+The business logo (`BusinessSettings.logoUrl`, uploaded from `/settings`) is stored in **Vercel Blob**, not the database — `app/actions/settings.ts`'s `uploadBusinessLogo`/`removeBusinessLogo` call `put()`/`del()` from `@vercel/blob`, which needs a `BLOB_READ_WRITE_TOKEN` env var. Like `DATABASE_URL`, this must be provisioned per environment (a Blob store created in the Vercel dashboard, token copied into `.env`/`.env.local` for local dev, and set separately in each Vercel environment) — it is never auto-configured by a push. Without it, `uploadBusinessLogo` fails gracefully (`{success:false}`, no crash) rather than throwing.
+
 ## Architecture
 
 **Every mutation is a Server Action, not a Route Handler** — there is no `app/api/`. Actions live in `app/actions/{invoices,customers,settings}.ts`, are called directly from client components (not via `<form action={...}>`), and return a `{ success: true, ... } | { success: false, error: string }` object rather than throwing or calling `redirect()`. Callers branch on `result.success` and handle navigation themselves via `useRouter()`. Follow this pattern for new mutations rather than introducing Route Handlers or server-side redirects.

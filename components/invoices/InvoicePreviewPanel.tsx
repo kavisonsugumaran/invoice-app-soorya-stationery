@@ -9,7 +9,7 @@ type BusinessInfo = {
   businessName: string;
   address: string | null;
   phone: string | null;
-  fax: string | null;
+  whatsapp: string | null;
   email: string | null;
   taxId: string | null;
 } | null;

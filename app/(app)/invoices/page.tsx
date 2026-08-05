@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import RecentInvoicesTable from "@/components/dashboard/RecentInvoicesTable";
 import { getAllInvoices } from "@/lib/invoices";
 
@@ -18,9 +18,20 @@ export default async function InvoicesPage({
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-foreground">
-          {q ? `Search results for "${q}"` : "Invoices"}
-        </h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold text-foreground">
+            {q ? `Search results for "${q}"` : "Invoices"}
+          </h1>
+          {q && (
+            <Link
+              href="/invoices"
+              className="flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+            >
+              <X size={12} />
+              Clear search
+            </Link>
+          )}
+        </div>
         <Link
           href="/invoices/new"
           className="flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"

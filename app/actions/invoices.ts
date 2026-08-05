@@ -1,5 +1,6 @@
 "use server";
 
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { Prisma, type InvoiceStatus } from "@prisma/client";
 import { computeInvoiceTotals, computeLineTotal } from "@/lib/invoice-math";
@@ -7,6 +8,7 @@ import { findProductByExactName } from "@/lib/products";
 import { createProductWithReference } from "@/app/actions/products";
 import { requireUser, requireAdmin } from "@/lib/auth-guard";
 import { tinError } from "@/lib/validation";
+import { normalizePhone } from "@/lib/phone-format";
 
 export type InvoiceItemInput = {
   reference: string;
@@ -122,7 +124,7 @@ function validate(input: CreateInvoiceInput): string | null {
 
 async function upsertCustomer(billTo: BillToInput) {
   const name = billTo.name.trim();
-  const phone = billTo.phone.trim();
+  const phone = normalizePhone(billTo.phone);
   const address = billTo.address.trim();
   const taxId = billTo.taxId.trim();
 
@@ -175,13 +177,14 @@ async function upsertCustomer(billTo: BillToInput) {
 }
 
 /**
- * Resolves each invoice item to a catalog Product, creating or updating it as
- * needed, and returns the item data ready to attach to the invoice. Price
- * edits on a linked product propagate to the catalog; editing the name
- * instead of using the autocomplete just leaves productId unset, so it
- * resolves via exact-name match or creates a fresh product — never silently
- * overwrites the original one. Run sequentially (not Promise.all) so two
- * brand-new items in the same invoice don't race the reference counter.
+ * Resolves each invoice item to a catalog Product, creating one as needed,
+ * and returns the item data ready to attach to the invoice. A catalog
+ * product's price is never overwritten by an invoice edit — matching a
+ * linked product (or an exact name match) only reuses it when the price is
+ * unchanged; any price deviation is treated as a distinct product and gets
+ * its own new reference, same as editing the name does. Run sequentially
+ * (not Promise.all) so two brand-new items in the same invoice don't race
+ * the reference counter.
  */
 async function resolveInvoiceItems(items: InvoiceItemInput[]) {
   const resolved = [];
@@ -190,27 +193,23 @@ async function resolveInvoiceItems(items: InvoiceItemInput[]) {
     let product: { id: string; reference: string } | null = null;
 
     if (item.productId) {
-      try {
-        const updated = await prisma.product.update({
-          where: { id: item.productId },
-          data: { price: item.price },
-        });
-        product = { id: updated.id, reference: updated.reference };
-      } catch (error) {
-        const notFound =
-          error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025";
-        if (!notFound) throw error;
-        // Selected product no longer exists; fall through to the name-match/create path below.
+      const linked = await prisma.product.findUnique({ where: { id: item.productId } });
+      if (linked) {
+        product =
+          linked.price === item.price
+            ? { id: linked.id, reference: linked.reference }
+            : await createProductWithReference({ name, price: item.price });
       }
+      // else: selected product no longer exists; fall through to the name-match/create path below.
     }
 
     if (!product) {
       const existing = await findProductByExactName(name);
       if (existing) {
-        if (existing.price !== item.price) {
-          await prisma.product.update({ where: { id: existing.id }, data: { price: item.price } });
-        }
-        product = { id: existing.id, reference: existing.reference };
+        product =
+          existing.price === item.price
+            ? { id: existing.id, reference: existing.reference }
+            : await createProductWithReference({ name, price: item.price });
       } else {
         product = await createProductWithReference({ name, price: item.price });
       }
@@ -372,6 +371,46 @@ export async function updateInvoiceStatus(
     }
 
     await prisma.invoice.update({ where: { id: invoiceId }, data: { status } });
+    return { success: true };
+  } catch {
+    return { success: false, error: "Could not update invoice status." };
+  }
+}
+
+// The only sanctioned way to reverse a PAID invoice — updateInvoiceStatus()
+// above still hard-blocks PAID -> UNPAID unconditionally. Gated behind
+// re-entering the current admin's own password (not just being logged in as
+// admin) since this reverses a state the rest of the app treats as terminal.
+export async function revertInvoiceToUnpaid(
+  invoiceId: string,
+  adminPassword: string
+): Promise<{ success: true } | { success: false; error: string }> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return { success: false, error: auth.error };
+
+  const admin = await prisma.user.findUnique({ where: { id: auth.user.id } });
+  if (!admin) {
+    return { success: false, error: "Could not verify admin password." };
+  }
+
+  const passwordMatches = await bcrypt.compare(adminPassword, admin.passwordHash);
+  if (!passwordMatches) {
+    return { success: false, error: "Incorrect password." };
+  }
+
+  const current = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    select: { status: true },
+  });
+  if (!current) {
+    return { success: false, error: "Invoice not found." };
+  }
+  if (current.status !== "PAID") {
+    return { success: false, error: "Only a paid invoice can be marked as unpaid." };
+  }
+
+  try {
+    await prisma.invoice.update({ where: { id: invoiceId }, data: { status: "UNPAID" } });
     return { success: true };
   } catch {
     return { success: false, error: "Could not update invoice status." };

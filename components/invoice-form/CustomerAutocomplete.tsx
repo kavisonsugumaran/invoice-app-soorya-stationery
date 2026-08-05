@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import InitialsAvatar from "@/components/ui/InitialsAvatar";
+import { formatPhone } from "@/lib/phone-format";
 
 export type CustomerOption = {
   id: string;
@@ -73,7 +74,7 @@ export default function CustomerAutocomplete({
                 <span className="flex-1 truncate">{customer.name}</span>
                 {customer.phone && (
                   <span className="shrink-0 text-xs text-muted-foreground">
-                    {customer.phone}
+                    {formatPhone(customer.phone)}
                   </span>
                 )}
               </button>

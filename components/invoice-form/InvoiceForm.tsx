@@ -19,19 +19,43 @@ import ItemAutocomplete, {
   type ProductOption,
 } from "@/components/invoice-form/ItemAutocomplete";
 import { tinError, TIN_LENGTH } from "@/lib/validation";
+import { PHONE_LENGTH } from "@/lib/phone-format";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/ToastProvider";
 
 const PAYMENT_MODES = ["Cash", "Card", "Bank Transfer", "Cheque"] as const;
 
-type ItemRow = Omit<InvoiceItemInput, "productId"> & {
+type LinkedProduct = { id: string; reference: string; name: string; price: number };
+
+type ItemRow = {
   id: string;
-  productId: string | null;
+  name: string;
+  price: number;
+  quantity: number;
+  // The product this row was selected from, remembered independently of live
+  // edits — see activeLink() below for why this isn't just cleared on edit.
+  linkedProduct: LinkedProduct | null;
 };
+
+// A row only still represents its linked product while name and price match
+// what was selected — resolveInvoiceItems() (server-side) uses the same
+// name+price match to decide whether to reuse that product or mint a new
+// one, so this keeps the Ref. column truthful to what save will actually do.
+// Editing away shows "Auto" (a new/different product); editing back to the
+// original values re-shows the original reference, rather than staying
+// cleared forever.
+function activeLink(item: ItemRow): LinkedProduct | null {
+  if (!item.linkedProduct) return null;
+  return item.linkedProduct.name === item.name.trim() && item.linkedProduct.price === item.price
+    ? item.linkedProduct
+    : null;
+}
 
 type BusinessInfo = {
   businessName: string;
   address: string | null;
   phone: string | null;
-  fax: string | null;
+  whatsapp: string | null;
   email: string | null;
   taxId: string | null;
   dmOffsetXMm: number;
@@ -61,7 +85,7 @@ type InvoiceFormProps = {
 );
 
 function emptyRow(id: string): ItemRow {
-  return { id, reference: "", name: "", price: 0, quantity: 1, productId: null };
+  return { id, name: "", price: 0, quantity: 1, linkedProduct: null };
 }
 
 export default function InvoiceForm(props: InvoiceFormProps) {
@@ -70,14 +94,19 @@ export default function InvoiceForm(props: InvoiceFormProps) {
   const initial = isEdit ? props.initialData : null;
 
   const router = useRouter();
+  const { showToast } = useToast();
   const idPrefix = useId();
   const [nextRowId, setNextRowId] = useState(1);
   const [items, setItems] = useState<ItemRow[]>(
     initial && initial.items.length > 0
       ? initial.items.map((item, i) => ({
-          ...item,
           id: `${idPrefix}-init-${i}`,
-          productId: item.productId ?? null,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          linkedProduct: item.productId
+            ? { id: item.productId, reference: item.reference, name: item.name, price: item.price }
+            : null,
         }))
       : [emptyRow(`${idPrefix}-0`)]
   );
@@ -96,12 +125,27 @@ export default function InvoiceForm(props: InvoiceFormProps) {
   const [taxEnabled, setTaxEnabled] = useState(initial?.taxEnabled ?? false);
   const [taxPercent, setTaxPercent] = useState(initial?.taxPercent ?? 0);
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const { subtotal, taxAmount, total } = useMemo(
     () => computeInvoiceTotals(items, taxEnabled, taxPercent),
     [items, taxEnabled, taxPercent]
+  );
+
+  // Blank scaffold rows (unfilled "add item" slots) shouldn't render as a
+  // phantom Qty 1 / Rs. 0.00 line in the preview until a name is entered.
+  const previewItems = useMemo(
+    () =>
+      items
+        .filter((item) => item.name.trim() !== "")
+        .map((item) => ({
+          reference: activeLink(item)?.reference ?? "",
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+        })),
+    [items]
   );
 
   function updateItem(id: string, patch: Partial<ItemRow>) {
@@ -110,18 +154,16 @@ export default function InvoiceForm(props: InvoiceFormProps) {
 
   function selectProduct(id: string, product: ProductOption) {
     updateItem(id, {
-      reference: product.reference,
       name: product.name,
       price: product.price,
-      productId: product.id,
+      linkedProduct: { id: product.id, reference: product.reference, name: product.name, price: product.price },
     });
   }
 
-  // Reference/name are locked once a row is linked to a product — this clears the
-  // link so the user can pick or type a different item instead of overwriting the
-  // original product's identity. Quantity is left as-is.
+  // Clears the row entirely so the user can pick or type a different item
+  // instead of overwriting the original product's identity. Quantity is left as-is.
   function resetItemToBlank(id: string) {
-    updateItem(id, { reference: "", name: "", price: 0, productId: null });
+    updateItem(id, { name: "", price: 0, linkedProduct: null });
   }
 
   function addRow() {
@@ -129,14 +171,19 @@ export default function InvoiceForm(props: InvoiceFormProps) {
     setNextRowId((n) => n + 1);
   }
 
+  // Below the invoice's one-item minimum, "removing" the last row clears it back
+  // to blank instead of leaving the user stuck with no way to remove it at all.
   function removeRow(id: string) {
-    setItems((prev) => (prev.length > 1 ? prev.filter((row) => row.id !== id) : prev));
+    setItems((prev) =>
+      prev.length > 1
+        ? prev.filter((row) => row.id !== id)
+        : prev.map((row) => (row.id === id ? emptyRow(row.id) : row))
+    );
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setSuccessMessage(null);
 
     const taxIdValidationError = tinError(billToTaxId);
     setBillToTaxIdError(taxIdValidationError);
@@ -144,14 +191,21 @@ export default function InvoiceForm(props: InvoiceFormProps) {
       return;
     }
 
+    setIsConfirmOpen(true);
+  }
+
+  function handleConfirm() {
     const payload = {
-      items: items.map(({ reference, name, price, quantity, productId }) => ({
-        reference,
-        name,
-        price,
-        quantity,
-        productId: productId ?? undefined,
-      })),
+      items: items.map((item) => {
+        const link = activeLink(item);
+        return {
+          reference: link?.reference ?? "",
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          productId: link?.id,
+        };
+      }),
       taxEnabled,
       taxPercent,
       billTo: {
@@ -171,10 +225,12 @@ export default function InvoiceForm(props: InvoiceFormProps) {
       if (isEdit) {
         const result = await updateInvoice(props.invoiceId, payload);
         if (result.success) {
-          setSuccessMessage("Changes saved.");
+          showToast("Changes saved.");
+          setIsConfirmOpen(false);
           router.refresh();
         } else {
           setError(result.error);
+          setIsConfirmOpen(false);
         }
       } else {
         const result = await createInvoice(payload);
@@ -182,6 +238,7 @@ export default function InvoiceForm(props: InvoiceFormProps) {
           router.push(`/invoices/${result.id}`);
         } else {
           setError(result.error);
+          setIsConfirmOpen(false);
         }
       }
     });
@@ -217,8 +274,10 @@ export default function InvoiceForm(props: InvoiceFormProps) {
           />
           <input
             type="text"
+            inputMode="numeric"
             value={billToPhone}
-            onChange={(e) => setBillToPhone(e.target.value)}
+            onChange={(e) => setBillToPhone(e.target.value.replace(/\D/g, "").slice(0, PHONE_LENGTH))}
+            maxLength={PHONE_LENGTH}
             placeholder="Phone"
             className="rounded-md border border-border bg-transparent px-3 py-2 text-sm"
           />
@@ -305,76 +364,77 @@ export default function InvoiceForm(props: InvoiceFormProps) {
             <span />
           </div>
 
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className="grid min-w-[42rem] grid-cols-[1.5rem_4rem_1fr_5.5rem_3.5rem_9rem_1.75rem] items-center gap-2"
-            >
-              <InitialsAvatar name={item.name} colorSeed={item.id} shape="square" size={24} />
-              <span
-                title={item.productId ? undefined : "Assigned automatically when saved"}
-                className="truncate rounded-md border border-border bg-surface-muted px-2 py-1.5 text-sm text-muted-foreground"
+          {items.map((item) => {
+            const link = activeLink(item);
+            return (
+              <div
+                key={item.id}
+                className="grid min-w-[42rem] grid-cols-[1.5rem_4rem_1fr_5.5rem_3.5rem_9rem_1.75rem] items-center gap-2"
               >
-                {item.reference || "Auto"}
-              </span>
-              <div className="flex items-center gap-1">
-                <div className="min-w-0 flex-1">
-                  <ItemAutocomplete
-                    products={products}
-                    value={item.name}
-                    disabled={Boolean(item.productId)}
-                    onChange={(name) => updateItem(item.id, { name })}
-                    onSelect={(product) => selectProduct(item.id, product)}
-                  />
+                <InitialsAvatar name={item.name} colorSeed={item.id} shape="square" size={24} />
+                <span
+                  title={link ? undefined : "Assigned automatically when saved"}
+                  className="truncate rounded-md border border-border bg-surface-muted px-2 py-1.5 text-sm text-muted-foreground"
+                >
+                  {link?.reference || "Auto"}
+                </span>
+                <div className="flex items-center gap-1">
+                  <div className="min-w-0 flex-1">
+                    <ItemAutocomplete
+                      products={products}
+                      value={item.name}
+                      onChange={(name) => updateItem(item.id, { name })}
+                      onSelect={(product) => selectProduct(item.id, product)}
+                    />
+                  </div>
+                  {link && (
+                    <button
+                      type="button"
+                      onClick={() => resetItemToBlank(item.id)}
+                      title="Use a different item"
+                      aria-label="Use a different item"
+                      className="flex shrink-0 items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
                 </div>
-                {item.productId && (
-                  <button
-                    type="button"
-                    onClick={() => resetItemToBlank(item.id)}
-                    title="Use a different item"
-                    aria-label="Use a different item"
-                    className="flex shrink-0 items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-surface-muted hover:text-foreground"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
+                <input
+                  type="number"
+                  min="0"
+                  max="1000000"
+                  step="0.01"
+                  value={item.price}
+                  onChange={(e) => updateItem(item.id, { price: e.target.valueAsNumber || 0 })}
+                  required
+                  className="rounded-md border border-border bg-transparent px-2 py-1.5 text-sm"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="10000"
+                  step="1"
+                  value={item.quantity}
+                  onChange={(e) =>
+                    updateItem(item.id, { quantity: e.target.valueAsNumber || 0 })
+                  }
+                  required
+                  className="rounded-md border border-border bg-transparent px-2 py-1.5 text-sm"
+                />
+                <span className="truncate px-2 py-1.5 text-right text-sm text-muted-foreground">
+                  {formatCurrency(computeLineTotal(item))}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeRow(item.id)}
+                  aria-label="Remove item"
+                  className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-danger-muted hover:text-danger"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
-              <input
-                type="number"
-                min="0"
-                max="1000000"
-                step="0.01"
-                value={item.price}
-                onChange={(e) => updateItem(item.id, { price: e.target.valueAsNumber || 0 })}
-                required
-                className="rounded-md border border-border bg-transparent px-2 py-1.5 text-sm"
-              />
-              <input
-                type="number"
-                min="0"
-                max="10000"
-                step="1"
-                value={item.quantity}
-                onChange={(e) =>
-                  updateItem(item.id, { quantity: e.target.valueAsNumber || 0 })
-                }
-                required
-                className="rounded-md border border-border bg-transparent px-2 py-1.5 text-sm"
-              />
-              <span className="truncate px-2 py-1.5 text-right text-sm text-muted-foreground">
-                {formatCurrency(computeLineTotal(item))}
-              </span>
-              <button
-                type="button"
-                onClick={() => removeRow(item.id)}
-                disabled={items.length === 1}
-                aria-label="Remove item"
-                className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-danger-muted hover:text-danger disabled:opacity-30"
-              >
-                <Trash2 size={16} />
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <button
@@ -445,11 +505,6 @@ export default function InvoiceForm(props: InvoiceFormProps) {
           {error}
         </p>
       )}
-      {successMessage && (
-        <p role="status" className="text-sm text-success">
-          {successMessage}
-        </p>
-      )}
 
       <button
         type="submit"
@@ -458,6 +513,21 @@ export default function InvoiceForm(props: InvoiceFormProps) {
       >
         {isPending ? "Saving..." : isEdit ? "Save Changes" : "Save Invoice"}
       </button>
+
+      {isConfirmOpen && (
+        <ConfirmModal
+          title={isEdit ? "Save Changes?" : "Save Invoice?"}
+          message={
+            isEdit
+              ? "Save these changes to the invoice?"
+              : `Save this invoice for ${formatCurrency(total)}?`
+          }
+          confirmLabel={isPending ? "Saving..." : "Confirm"}
+          isPending={isPending}
+          onConfirm={handleConfirm}
+          onCancel={() => setIsConfirmOpen(false)}
+        />
+      )}
     </>
   );
 
@@ -497,7 +567,7 @@ export default function InvoiceForm(props: InvoiceFormProps) {
           placeOfSupply={placeOfSupply}
           modeOfPayment={modeOfPayment}
           additionalInfo={additionalInfo}
-          items={items}
+          items={previewItems}
           taxEnabled={taxEnabled}
           taxPercent={taxPercent}
           subtotal={subtotal}

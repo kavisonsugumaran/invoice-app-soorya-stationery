@@ -2,35 +2,42 @@
 
 import { useState, useTransition } from "react";
 import { changeOwnPassword } from "@/app/actions/users";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/ToastProvider";
 
 export default function ChangePasswordForm() {
+  const { showToast } = useToast();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setSuccessMessage(null);
 
     if (newPassword !== confirmPassword) {
       setError("New passwords don't match.");
       return;
     }
 
+    setIsConfirmOpen(true);
+  }
+
+  function handleConfirm() {
     startTransition(async () => {
       const result = await changeOwnPassword({ currentPassword, newPassword });
       if (result.success) {
-        setSuccessMessage("Password changed.");
+        showToast("Password changed.");
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");
       } else {
         setError(result.error);
       }
+      setIsConfirmOpen(false);
     });
   }
 
@@ -99,11 +106,6 @@ export default function ChangePasswordForm() {
           {error}
         </p>
       )}
-      {successMessage && (
-        <p role="status" className="text-sm text-success">
-          {successMessage}
-        </p>
-      )}
 
       <div>
         <button
@@ -114,6 +116,17 @@ export default function ChangePasswordForm() {
           {isPending ? "Changing..." : "Change Password"}
         </button>
       </div>
+
+      {isConfirmOpen && (
+        <ConfirmModal
+          title="Change Password?"
+          message="Change your password? You'll need to use the new password next time you sign in."
+          confirmLabel={isPending ? "Changing..." : "Confirm"}
+          isPending={isPending}
+          onConfirm={handleConfirm}
+          onCancel={() => setIsConfirmOpen(false)}
+        />
+      )}
     </form>
   );
 }

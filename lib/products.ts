@@ -100,9 +100,12 @@ export async function getProductById(id: string) {
   };
 }
 
-export async function findProductByExactName(name: string) {
+export async function findProductByExactName(name: string, excludeId?: string) {
   return prisma.product.findFirst({
-    where: { name: { equals: name, mode: "insensitive" } },
+    where: {
+      name: { equals: name, mode: "insensitive" },
+      ...(excludeId ? { NOT: { id: excludeId } } : {}),
+    },
   });
 }
 

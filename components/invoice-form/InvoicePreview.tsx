@@ -4,6 +4,7 @@ import { Printer } from "lucide-react";
 import { computeLineTotal } from "@/lib/invoice-math";
 import { amountToWords } from "@/lib/number-to-words";
 import { formatInvoiceDate } from "@/lib/date-format";
+import { formatPhone } from "@/lib/phone-format";
 
 const NAVY = "#1c4a86";
 const NAVY_LIGHT = "#dbe4f7";
@@ -12,7 +13,7 @@ type BusinessInfo = {
   businessName: string;
   address: string | null;
   phone: string | null;
-  fax: string | null;
+  whatsapp: string | null;
   email: string | null;
   taxId: string | null;
 } | null;
@@ -135,7 +136,7 @@ export default function InvoicePreview({
             <InfoLine label="Address" value={business?.address} />
             <InfoLine label="E-mail" value={business?.email} />
             <InfoLine label="Telephone No." value={business?.phone} />
-            <InfoLine label="Fax" value={business?.fax} />
+            <InfoLine label="WhatsApp" value={business?.whatsapp} />
           </div>
           <div
             className="flex flex-col gap-1 px-3 py-3 text-sm"
@@ -144,7 +145,7 @@ export default function InvoicePreview({
             <InfoLine label="Purchaser's TIN" value={billTo.taxId} />
             <InfoLine label="Purchaser's Name" value={billTo.name} />
             <InfoLine label="Address" value={billTo.address} />
-            <InfoLine label="Telephone No." value={billTo.phone} />
+            <InfoLine label="Telephone No." value={formatPhone(billTo.phone)} />
           </div>
         </div>
 
