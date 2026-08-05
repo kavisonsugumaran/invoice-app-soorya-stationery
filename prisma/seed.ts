@@ -81,7 +81,7 @@ async function main() {
       businessName: "SOORYA STATIONERS",
       address: "No. 05, 02nd Rohini Lane, Malwatta Road, Colombo 11.",
       phone: "+94 11 2437926, +94 11 5693018",
-      fax: "+94 11 4713989",
+      whatsapp: "+94 76 3338906",
       email: "sooryato19@gmail.com",
       taxId: "0000000",
       defaultTax: 10,

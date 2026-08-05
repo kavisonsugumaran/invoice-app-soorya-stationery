@@ -7,6 +7,8 @@ import {
   updateDotMatrixCalibration,
   type DotMatrixCalibrationInput,
 } from "@/app/actions/settings";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/ToastProvider";
 
 export default function DotMatrixCalibrationForm({
   initial,
@@ -14,19 +16,22 @@ export default function DotMatrixCalibrationForm({
   initial: DotMatrixCalibrationInput;
 }) {
   const router = useRouter();
+  const { showToast } = useToast();
   const [offsetX, setOffsetX] = useState(initial.dmOffsetXMm);
   const [offsetY, setOffsetY] = useState(initial.dmOffsetYMm);
   const [fontSize, setFontSize] = useState(initial.dmFontSizePt);
   const [rowHeight, setRowHeight] = useState(initial.dmItemRowMm);
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setSuccessMessage(null);
+    setIsConfirmOpen(true);
+  }
 
+  function handleConfirm() {
     startTransition(async () => {
       const result = await updateDotMatrixCalibration({
         dmOffsetXMm: offsetX,
@@ -36,11 +41,12 @@ export default function DotMatrixCalibrationForm({
       });
 
       if (result.success) {
-        setSuccessMessage("Calibration saved.");
+        showToast("Changes saved.");
         router.refresh();
       } else {
         setError(result.error);
       }
+      setIsConfirmOpen(false);
     });
   }
 
@@ -111,11 +117,6 @@ export default function DotMatrixCalibrationForm({
           {error}
         </p>
       )}
-      {successMessage && (
-        <p role="status" className="text-sm text-success">
-          {successMessage}
-        </p>
-      )}
 
       <div className="flex items-center gap-3">
         <button
@@ -133,6 +134,17 @@ export default function DotMatrixCalibrationForm({
           Print Test Sheet
         </Link>
       </div>
+
+      {isConfirmOpen && (
+        <ConfirmModal
+          title="Save Calibration?"
+          message="Save these calibration offsets? They apply to every dot-matrix invoice printed from now on."
+          confirmLabel={isPending ? "Saving..." : "Confirm"}
+          isPending={isPending}
+          onConfirm={handleConfirm}
+          onCancel={() => setIsConfirmOpen(false)}
+        />
+      )}
     </form>
   );
 }

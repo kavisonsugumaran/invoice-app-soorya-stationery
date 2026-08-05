@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { getAllCustomers } from "@/lib/customers";
 import InitialsAvatar from "@/components/ui/InitialsAvatar";
+import { formatPhone } from "@/lib/phone-format";
 
 type CustomerRow = Awaited<ReturnType<typeof getAllCustomers>>["customers"][number];
 
@@ -39,7 +40,7 @@ export default function CustomersTable({
                     {customer.name}
                   </Link>
                 </td>
-                <td className="px-4 py-2.5 text-muted-foreground">{customer.phone ?? "—"}</td>
+                <td className="px-4 py-2.5 text-muted-foreground">{formatPhone(customer.phone) || "—"}</td>
                 <td className="px-4 py-2.5 text-muted-foreground">{customer.email ?? "—"}</td>
                 <td className="px-4 py-2.5 text-right text-foreground">{customer.invoiceCount}</td>
                 <td className="px-4 py-2.5 text-right text-foreground">

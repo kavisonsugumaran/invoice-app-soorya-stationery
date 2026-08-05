@@ -4,6 +4,7 @@ import { Printer } from "lucide-react";
 import { computeLineTotal } from "@/lib/invoice-math";
 import { amountToWords } from "@/lib/number-to-words";
 import { formatInvoiceDate } from "@/lib/date-format";
+import { formatPhone } from "@/lib/phone-format";
 import {
   DM_LAYOUT,
   DM_PAGE_WIDTH_MM,
@@ -257,7 +258,7 @@ export default function DotMatrixInvoice({
           </Field>
         )}
         <Field pos={DM_LAYOUT.purchaserPhone} calibration={calibration}>
-          {billTo.phone}
+          {formatPhone(billTo.phone)}
         </Field>
 
         <Field pos={DM_LAYOUT.dateOfDelivery} calibration={calibration}>

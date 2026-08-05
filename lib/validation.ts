@@ -10,3 +10,15 @@ export function tinError(value: string): string | null {
   }
   return null;
 }
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Email is optional everywhere it's used — only validated when a value is present. */
+export function emailError(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!EMAIL_PATTERN.test(trimmed)) {
+    return "Enter a valid email address.";
+  }
+  return null;
+}

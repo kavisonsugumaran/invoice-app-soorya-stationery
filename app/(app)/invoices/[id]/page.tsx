@@ -58,7 +58,7 @@ export default async function InvoiceDetailPage({
             <Printer size={16} />
             Print / View
           </Link>
-          <InvoiceStatusToggle invoiceId={invoice.id} status={invoice.status} variant="full" />
+          <InvoiceStatusToggle invoiceId={invoice.id} status={invoice.status} variant="full" isAdmin />
         </div>
       </div>
 

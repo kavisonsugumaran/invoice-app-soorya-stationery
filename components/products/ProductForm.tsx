@@ -6,7 +6,10 @@ import {
   createProduct,
   updateProduct,
   type ProductCreateInput,
+  type ProductUpdateInput,
 } from "@/app/actions/products";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/ToastProvider";
 
 type ExistingProduct = {
   id: string;
@@ -21,19 +24,22 @@ type ProductFormProps =
 
 export default function ProductForm(props: ProductFormProps) {
   const router = useRouter();
+  const { showToast } = useToast();
   const initial = props.mode === "edit" ? props.product : null;
 
   const [name, setName] = useState(initial?.name ?? "");
   const [price, setPrice] = useState(initial?.price ?? 0);
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setSuccessMessage(null);
+    setIsConfirmOpen(true);
+  }
 
+  function handleConfirm() {
     startTransition(async () => {
       if (props.mode === "create") {
         const input: ProductCreateInput = { name, price };
@@ -42,14 +48,18 @@ export default function ProductForm(props: ProductFormProps) {
           router.push(`/products/${result.id}`);
         } else {
           setError(result.error);
+          setIsConfirmOpen(false);
         }
       } else {
-        const result = await updateProduct(props.product.id, { price });
+        const input: ProductUpdateInput = { name, price };
+        const result = await updateProduct(props.product.id, input);
         if (result.success) {
-          setSuccessMessage("Changes saved.");
+          showToast("Changes saved.");
+          setIsConfirmOpen(false);
           router.refresh();
         } else {
           setError(result.error);
+          setIsConfirmOpen(false);
         }
       }
     });
@@ -77,25 +87,19 @@ export default function ProductForm(props: ProductFormProps) {
         <label className="text-sm font-medium text-muted-foreground" htmlFor="product-name">
           Name*
         </label>
-        {props.mode === "edit" ? (
-          <span className="rounded-md border border-border bg-surface-muted px-3 py-2 text-sm text-muted-foreground">
-            {name}
-          </span>
-        ) : (
-          <input
-            id="product-name"
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={80}
-            required
-            className="rounded-md border border-border bg-transparent px-3 py-2 text-sm"
-          />
-        )}
+        <input
+          id="product-name"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          maxLength={80}
+          required
+          className="rounded-md border border-border bg-transparent px-3 py-2 text-sm"
+        />
         {props.mode === "edit" && (
           <span className="text-xs text-muted-foreground">
-            Reference and name can&apos;t be changed. If this item has been renamed, add it as a
-            new product instead.
+            Renaming updates this product going forward. Invoices that already used it keep
+            showing the name/price they were saved with.
           </span>
         )}
       </div>
@@ -122,11 +126,6 @@ export default function ProductForm(props: ProductFormProps) {
           {error}
         </p>
       )}
-      {successMessage && (
-        <p role="status" className="text-sm text-success">
-          {successMessage}
-        </p>
-      )}
 
       <button
         type="submit"
@@ -135,6 +134,21 @@ export default function ProductForm(props: ProductFormProps) {
       >
         {isPending ? "Saving..." : props.mode === "create" ? "Create Product" : "Save Changes"}
       </button>
+
+      {isConfirmOpen && (
+        <ConfirmModal
+          title={props.mode === "create" ? "Create Product?" : "Save Changes?"}
+          message={
+            props.mode === "create"
+              ? `Add "${name}" to the product catalog?`
+              : "Save these changes? This renames/reprices the product going forward — past invoices that used it are unaffected."
+          }
+          confirmLabel={isPending ? "Saving..." : "Confirm"}
+          isPending={isPending}
+          onConfirm={handleConfirm}
+          onCancel={() => setIsConfirmOpen(false)}
+        />
+      )}
     </form>
   );
 }

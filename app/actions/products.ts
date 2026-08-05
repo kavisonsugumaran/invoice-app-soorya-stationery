@@ -10,7 +10,8 @@ export type ProductCreateInput = {
   price: number;
 };
 
-export type ProductPriceUpdateInput = {
+export type ProductUpdateInput = {
+  name: string;
   price: number;
 };
 
@@ -94,24 +95,45 @@ export async function createProduct(input: ProductCreateInput): Promise<CreatePr
   return { success: true, id: product.id, reference: product.reference };
 }
 
-// Intentionally accepts only { price } — reference and name are a product's
-// permanent identity and can never be edited here, enforced server-side (not
-// just UI-disabled), same defense-in-depth style as the PAID-is-terminal
-// check in updateInvoiceStatus.
+// Reference is a product's permanent identity and can never be edited here
+// (enforced server-side, not just UI-disabled — same defense-in-depth style
+// as the PAID-is-terminal check in updateInvoiceStatus). Name and price CAN
+// be edited, and this renames/reprices the one catalog product in place —
+// unlike editing a line item's name/price on an invoice, which detaches and
+// resolves to a different product instead (see resolveInvoiceItems() in
+// app/actions/invoices.ts). Past invoices are unaffected either way: each
+// InvoiceItem already stores its own snapshot of name/price/reference taken
+// at save time, never a live read of the Product row.
 export async function updateProduct(
   id: string,
-  input: ProductPriceUpdateInput
+  input: ProductUpdateInput
 ): Promise<UpdateProductResult> {
   const auth = await requireUser();
   if (!auth.ok) return { success: false, error: auth.error };
+
+  const name = input.name.trim();
+  if (!name) {
+    return { success: false, error: "Product name is required." };
+  }
+  if (name.length > 80) {
+    return { success: false, error: "Product name must be 80 characters or fewer." };
+  }
 
   const priceError = validatePrice(input.price);
   if (priceError) {
     return { success: false, error: priceError };
   }
 
+  const existing = await findProductByExactName(name, id);
+  if (existing) {
+    return {
+      success: false,
+      error: `A product with this name already exists: ${existing.name} (${existing.reference}).`,
+    };
+  }
+
   try {
-    await prisma.product.update({ where: { id }, data: { price: input.price } });
+    await prisma.product.update({ where: { id }, data: { name, price: input.price } });
     return { success: true };
   } catch {
     return { success: false, error: "Could not update product." };

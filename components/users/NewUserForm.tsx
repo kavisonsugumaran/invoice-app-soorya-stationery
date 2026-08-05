@@ -4,26 +4,31 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Role } from "@prisma/client";
 import { createUser } from "@/app/actions/users";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/ToastProvider";
 
 export default function NewUserForm() {
   const router = useRouter();
+  const { showToast } = useToast();
   const [username, setUsername] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("USER");
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setSuccessMessage(null);
+    setIsConfirmOpen(true);
+  }
 
+  function handleConfirm() {
     startTransition(async () => {
       const result = await createUser({ username, name, password, role });
       if (result.success) {
-        setSuccessMessage(`User "${username}" created.`);
+        showToast(`User "${username}" created.`);
         setUsername("");
         setName("");
         setPassword("");
@@ -32,6 +37,7 @@ export default function NewUserForm() {
       } else {
         setError(result.error);
       }
+      setIsConfirmOpen(false);
     });
   }
 
@@ -108,11 +114,6 @@ export default function NewUserForm() {
           {error}
         </p>
       )}
-      {successMessage && (
-        <p role="status" className="text-sm text-success">
-          {successMessage}
-        </p>
-      )}
 
       <button
         type="submit"
@@ -121,6 +122,17 @@ export default function NewUserForm() {
       >
         {isPending ? "Creating..." : "Create User"}
       </button>
+
+      {isConfirmOpen && (
+        <ConfirmModal
+          title="Create User?"
+          message={`Create a new ${role === "ADMIN" ? "Admin" : "Staff"} account for "${username}"?`}
+          confirmLabel={isPending ? "Creating..." : "Confirm"}
+          isPending={isPending}
+          onConfirm={handleConfirm}
+          onCancel={() => setIsConfirmOpen(false)}
+        />
+      )}
     </form>
   );
 }
