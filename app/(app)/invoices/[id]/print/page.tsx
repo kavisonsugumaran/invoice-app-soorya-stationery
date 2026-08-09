@@ -41,7 +41,11 @@ export default async function InvoicePrintPage({
               Created by {invoice.createdBy.name}
             </span>
           )}
-          <InvoiceStatusToggle invoiceId={invoice.id} status={invoice.status} variant="full" />
+          <InvoiceStatusToggle
+            invoiceId={invoice.id}
+            status={invoice.status}
+            variant="full"
+          />
         </div>
       </div>
 
