@@ -58,7 +58,7 @@ export default async function InvoiceDetailPage({
             <Printer size={16} />
             Print / View
           </Link>
-          <InvoiceStatusToggle invoiceId={invoice.id} status={invoice.status} variant="full" isAdmin />
+          <InvoiceStatusToggle invoiceId={invoice.id} status={invoice.status} variant="full" />
         </div>
       </div>
 
@@ -77,6 +77,7 @@ export default async function InvoiceDetailPage({
             taxId: invoice.customer?.taxId ?? "",
             customerId: invoice.customer?.id ?? null,
           },
+          date: invoice.date.toISOString().slice(0, 10),
           dateOfDelivery: invoice.dateOfDelivery
             ? invoice.dateOfDelivery.toISOString().slice(0, 10)
             : "",

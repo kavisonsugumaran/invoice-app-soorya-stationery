@@ -10,6 +10,7 @@ datasource db {
 enum InvoiceStatus {
   UNPAID
   PAID
+  CANCELLED
 }
 
 enum Role {
@@ -98,7 +99,15 @@ model BusinessSettings {
   // Invoice numbering (Gazette 2481/22): the "branch/unit/project" code
   // slotted into YYMMM_QQQQ_XXXXX. No settings UI edits this yet — it's set
   // via seed/direct DB update for now.
-  invoiceUnitCode String @default("SRY")
+  invoiceUnitCode String @default("SST")
+
+  // TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md).
+  // Null everywhere by default — deliberately opt-in per environment (only
+  // ever set on production) rather than keyed off the system clock, so this
+  // can never silently activate in local dev/test/CI just because the
+  // calendar happens to read August 2026. Remove this column once the
+  // client's backfill is done.
+  tempInvoiceSerialFloorAugust2026 Int?
 
   // Dot-matrix pre-printed stationery print calibration
   dmOffsetXMm    Float @default(0)

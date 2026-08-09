@@ -33,10 +33,21 @@ export type CreateInvoiceInput = {
   taxEnabled: boolean;
   taxPercent: number;
   billTo: BillToInput;
+  /** Invoice issuance date. Defaults to now (create) / left unchanged (update) if omitted. */
+  date?: string;
   dateOfDelivery: string;
   placeOfSupply: string;
   modeOfPayment: string;
   additionalInfo: string;
+  /**
+   * TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md):
+   * when true, skips Gazette-format numbering entirely and assigns an
+   * `OLD-XXXXX` placeholder instead, so backfilling old handwritten invoices
+   * never advances the real counter new invoices rely on. The placeholder is
+   * meant to be manually corrected in the DB later. Remove this flag (and its
+   * handling below) once the backfill is finished.
+   */
+  isOldInvoice?: boolean;
 };
 
 export type CreateInvoiceResult =
@@ -50,9 +61,13 @@ const INVOICE_TIME_ZONE = "Asia/Colombo";
 // separator between them, then the business's unit/branch code, then a
 // zero-padded serial. The counter resets monthly (the prefix is YYMMM, not
 // a full date), unlike the old per-day INV-YYYYMMDD-NN scheme this replaces.
-const DEFAULT_INVOICE_UNIT_CODE = "SRY";
+const DEFAULT_INVOICE_UNIT_CODE = "SST";
 const INVOICE_UNIT_CODE_MAX_LEN = 10; // keeps the total well under the gazette's 40-char cap
 const INVOICE_SERIAL_DIGITS = 5;
+
+// Placeholder scheme for backfilled old invoices — see isOldInvoice above.
+const OLD_INVOICE_PREFIX = "OLD-";
+const OLD_INVOICE_SERIAL_DIGITS = 5;
 
 function invoiceYearMonthPrefix(): string {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -63,6 +78,28 @@ function invoiceYearMonthPrefix(): string {
 
   const lookup = Object.fromEntries(parts.map((p) => [p.type, p.value]));
   return `${lookup.year}${lookup.month.toUpperCase()}`;
+}
+
+/**
+ * The highest numeric serial already in use among invoiceNo values starting
+ * with `prefix` (0 if none exist). Deliberately not a row count — a count
+ * only matches the highest serial when there are no gaps, which doesn't hold
+ * once anything (like the temporary Aug 2026 floor) deliberately introduces one.
+ */
+async function highestExistingSerial(prefix: string): Promise<number> {
+  const existing = await prisma.invoice.findMany({
+    where: { invoiceNo: { startsWith: prefix } },
+    select: { invoiceNo: true },
+  });
+
+  let max = 0;
+  for (const { invoiceNo } of existing) {
+    const serial = Number.parseInt(invoiceNo.slice(prefix.length), 10);
+    if (Number.isFinite(serial) && serial > max) {
+      max = serial;
+    }
+  }
+  return max;
 }
 
 function validate(input: CreateInvoiceInput): string | null {
@@ -109,6 +146,10 @@ function validate(input: CreateInvoiceInput): string | null {
     if (!Number.isFinite(input.taxPercent) || input.taxPercent < 0 || input.taxPercent > 100) {
       return "Tax percent must be between 0 and 100.";
     }
+  }
+
+  if (input.date && Number.isNaN(Date.parse(input.date))) {
+    return "Invoice date is invalid.";
   }
 
   if (input.dateOfDelivery && Number.isNaN(Date.parse(input.dateOfDelivery))) {
@@ -247,26 +288,47 @@ export async function createInvoice(
   const customer = await upsertCustomer(input.billTo);
   const resolvedItems = await resolveInvoiceItems(input.items);
 
-  const businessSettings = await prisma.businessSettings.findUnique({
-    where: { id: "default" },
-    select: { invoiceUnitCode: true },
-  });
-  const unitCode = (businessSettings?.invoiceUnitCode || DEFAULT_INVOICE_UNIT_CODE).slice(
-    0,
-    INVOICE_UNIT_CODE_MAX_LEN
-  );
+  let prefix: string;
+  let baseSequence: number;
+  let serialDigits: number;
 
-  const yearMonth = invoiceYearMonthPrefix();
-  const prefix = `${yearMonth}_${unitCode}_`;
+  if (input.isOldInvoice) {
+    // TEMPORARY (Aug 2026 backfill) — deliberately never matches the real
+    // Gazette prefix, so backfilling never advances the real counter below.
+    prefix = OLD_INVOICE_PREFIX;
+    serialDigits = OLD_INVOICE_SERIAL_DIGITS;
+    baseSequence = await highestExistingSerial(prefix);
+  } else {
+    const businessSettings = await prisma.businessSettings.findUnique({
+      where: { id: "default" },
+      select: { invoiceUnitCode: true, tempInvoiceSerialFloorAugust2026: true },
+    });
+    const unitCode = (businessSettings?.invoiceUnitCode || DEFAULT_INVOICE_UNIT_CODE).slice(
+      0,
+      INVOICE_UNIT_CODE_MAX_LEN
+    );
 
-  const monthCount = await prisma.invoice.count({
-    where: { invoiceNo: { startsWith: prefix } },
-  });
+    const yearMonth = invoiceYearMonthPrefix();
+    prefix = `${yearMonth}_${unitCode}_`;
+    serialDigits = INVOICE_SERIAL_DIGITS;
+
+    const maxSerial = await highestExistingSerial(prefix);
+    // TEMPORARY (Aug 2026 backfill — see schema.prisma's comment on this
+    // field). Only takes effect where explicitly set (production), and only
+    // for August — never a blanket "if the calendar says August" check.
+    // Based on the highest existing serial, not a row count: the floor
+    // creates a deliberate gap (18 real rows vs. serials starting at 422),
+    // and a row count would stay stuck below the floor for hundreds of
+    // invoices, colliding and needing one more retry each time until the
+    // retry limit is exceeded and invoice creation starts failing outright.
+    const floor = businessSettings?.tempInvoiceSerialFloorAugust2026;
+    baseSequence = yearMonth === "26AUG" && floor ? Math.max(maxSerial, floor - 1) : maxSerial;
+  }
 
   const MAX_ATTEMPTS = 5;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const sequence = monthCount + 1 + attempt;
-    const invoiceNo = `${prefix}${String(sequence).padStart(INVOICE_SERIAL_DIGITS, "0")}`;
+    const sequence = baseSequence + 1 + attempt;
+    const invoiceNo = `${prefix}${String(sequence).padStart(serialDigits, "0")}`;
 
     try {
       const invoice = await prisma.invoice.create({
@@ -274,6 +336,7 @@ export async function createInvoice(
           invoiceNo,
           customerId: customer?.id ?? null,
           createdByUserId: auth.user.id,
+          date: input.date ? new Date(input.date) : new Date(),
           dateOfDelivery: input.dateOfDelivery ? new Date(input.dateOfDelivery) : null,
           placeOfSupply: input.placeOfSupply.trim() || null,
           modeOfPayment: input.modeOfPayment.trim() || null,
@@ -331,6 +394,10 @@ export async function updateInvoice(
         where: { id: invoiceId },
         data: {
           customerId: customer?.id ?? null,
+          // Leaves the stored date untouched if none was submitted, rather
+          // than resetting it to now — unlike createInvoice, where a missing
+          // date defaults to today.
+          date: input.date ? new Date(input.date) : undefined,
           dateOfDelivery: input.dateOfDelivery ? new Date(input.dateOfDelivery) : null,
           placeOfSupply: input.placeOfSupply.trim() || null,
           modeOfPayment: input.modeOfPayment.trim() || null,
@@ -369,6 +436,9 @@ export async function updateInvoiceStatus(
     if (current.status === "PAID" && status === "UNPAID") {
       return { success: false, error: "A paid invoice cannot be marked as unpaid." };
     }
+    if (current.status === "CANCELLED") {
+      return { success: false, error: "A cancelled invoice cannot be changed." };
+    }
 
     await prisma.invoice.update({ where: { id: invoiceId }, data: { status } });
     return { success: true };
@@ -377,24 +447,33 @@ export async function updateInvoiceStatus(
   }
 }
 
+// Both revertInvoiceToUnpaid() and cancelInvoice() are available to any
+// logged-in user (not admin-only) — the gate is this password check, not the
+// role. It's checked against every active admin's password, not necessarily
+// the current user's own, since the point is a staff member getting a
+// manager/admin to authorize the action at the till, not the staff member
+// needing to already be an admin themselves.
+async function verifyAnyAdminPassword(password: string): Promise<boolean> {
+  const admins = await prisma.user.findMany({
+    where: { role: "ADMIN", isActive: true },
+    select: { passwordHash: true },
+  });
+  for (const admin of admins) {
+    if (await bcrypt.compare(password, admin.passwordHash)) return true;
+  }
+  return false;
+}
+
 // The only sanctioned way to reverse a PAID invoice — updateInvoiceStatus()
-// above still hard-blocks PAID -> UNPAID unconditionally. Gated behind
-// re-entering the current admin's own password (not just being logged in as
-// admin) since this reverses a state the rest of the app treats as terminal.
+// above still hard-blocks PAID -> UNPAID unconditionally.
 export async function revertInvoiceToUnpaid(
   invoiceId: string,
   adminPassword: string
 ): Promise<{ success: true } | { success: false; error: string }> {
-  const auth = await requireAdmin();
+  const auth = await requireUser();
   if (!auth.ok) return { success: false, error: auth.error };
 
-  const admin = await prisma.user.findUnique({ where: { id: auth.user.id } });
-  if (!admin) {
-    return { success: false, error: "Could not verify admin password." };
-  }
-
-  const passwordMatches = await bcrypt.compare(adminPassword, admin.passwordHash);
-  if (!passwordMatches) {
+  if (!(await verifyAnyAdminPassword(adminPassword))) {
     return { success: false, error: "Incorrect password." };
   }
 
@@ -414,5 +493,39 @@ export async function revertInvoiceToUnpaid(
     return { success: true };
   } catch {
     return { success: false, error: "Could not update invoice status." };
+  }
+}
+
+// Cancelling is terminal (see the CANCELLED guard in updateInvoiceStatus
+// above — nothing can move an invoice out of that state) and allowed from
+// any non-cancelled status, paid or not — a single admin-password-confirmed
+// step, no need to revert to unpaid first.
+export async function cancelInvoice(
+  invoiceId: string,
+  adminPassword: string
+): Promise<{ success: true } | { success: false; error: string }> {
+  const auth = await requireUser();
+  if (!auth.ok) return { success: false, error: auth.error };
+
+  if (!(await verifyAnyAdminPassword(adminPassword))) {
+    return { success: false, error: "Incorrect password." };
+  }
+
+  const current = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    select: { status: true },
+  });
+  if (!current) {
+    return { success: false, error: "Invoice not found." };
+  }
+  if (current.status === "CANCELLED") {
+    return { success: false, error: "This invoice is already cancelled." };
+  }
+
+  try {
+    await prisma.invoice.update({ where: { id: invoiceId }, data: { status: "CANCELLED" } });
+    return { success: true };
+  } catch {
+    return { success: false, error: "Could not cancel invoice." };
   }
 }

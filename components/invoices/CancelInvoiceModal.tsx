@@ -2,10 +2,10 @@
 
 import { useState, useTransition } from "react";
 import Modal from "@/components/ui/Modal";
-import { revertInvoiceToUnpaid } from "@/app/actions/invoices";
+import { cancelInvoice } from "@/app/actions/invoices";
 import { useToast } from "@/components/ui/ToastProvider";
 
-export default function MarkUnpaidModal({
+export default function CancelInvoiceModal({
   invoiceId,
   onClose,
   onSuccess,
@@ -22,9 +22,9 @@ export default function MarkUnpaidModal({
     e.preventDefault();
 
     startTransition(async () => {
-      const result = await revertInvoiceToUnpaid(invoiceId, password);
+      const result = await cancelInvoice(invoiceId, password);
       if (result.success) {
-        showToast("Invoice marked as unpaid.");
+        showToast("Invoice cancelled.");
         onSuccess();
       } else {
         showToast(result.error, "error");
@@ -34,18 +34,20 @@ export default function MarkUnpaidModal({
   }
 
   return (
-    <Modal title="Mark as Unpaid?" onClose={onClose}>
+    <Modal title="Cancel Invoice?" onClose={onClose}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">
-          This reverses a paid invoice back to unpaid. Enter an admin password to authorize it.
+          This voids the invoice — it stays in the system marked as Cancelled and no longer
+          counts toward revenue or outstanding totals. This can&apos;t be undone. Enter an
+          admin password to authorize it.
         </p>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-muted-foreground" htmlFor="unpaid-admin-password">
+          <label className="text-sm font-medium text-muted-foreground" htmlFor="cancel-admin-password">
             Admin Password
           </label>
           <input
-            id="unpaid-admin-password"
+            id="cancel-admin-password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -62,7 +64,7 @@ export default function MarkUnpaidModal({
             disabled={isPending}
             className="rounded-full bg-danger px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
           >
-            {isPending ? "Verifying..." : "Mark as Unpaid"}
+            {isPending ? "Verifying..." : "Cancel Invoice"}
           </button>
           <button
             type="button"
@@ -70,7 +72,7 @@ export default function MarkUnpaidModal({
             disabled={isPending}
             className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-surface-muted disabled:opacity-50"
           >
-            Cancel
+            Keep Invoice
           </button>
         </div>
       </form>

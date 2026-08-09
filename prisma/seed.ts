@@ -85,7 +85,7 @@ async function main() {
       email: "sooryato19@gmail.com",
       taxId: "0000000",
       defaultTax: 10,
-      invoiceUnitCode: "SRY",
+      invoiceUnitCode: "SST",
     },
   });
 
@@ -142,7 +142,7 @@ async function main() {
   const monthCounters = new Map<string, number>();
 
   for (const date of dates) {
-    const yearMonthPrefix = `${String(date.getFullYear()).slice(-2)}${MONTH_ABBR[date.getMonth()]}_SRY_`;
+    const yearMonthPrefix = `${String(date.getFullYear()).slice(-2)}${MONTH_ABBR[date.getMonth()]}_SST_`;
     const seq = (monthCounters.get(yearMonthPrefix) ?? 0) + 1;
     monthCounters.set(yearMonthPrefix, seq);
     const invoiceNo = `${yearMonthPrefix}${String(seq).padStart(5, "0")}`;

@@ -3,31 +3,32 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { InvoiceStatus } from "@prisma/client";
-import { Check, RotateCcw } from "lucide-react";
+import { Check, RotateCcw, Ban } from "lucide-react";
 import { updateInvoiceStatus } from "@/app/actions/invoices";
 import StatusBadge from "@/components/invoices/StatusBadge";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import MarkUnpaidModal from "@/components/invoices/MarkUnpaidModal";
+import CancelInvoiceModal from "@/components/invoices/CancelInvoiceModal";
 
 export default function InvoiceStatusToggle({
   invoiceId,
   status,
   variant = "compact",
-  isAdmin = false,
 }: {
   invoiceId: string;
   status: InvoiceStatus;
   /** "full" shows a labeled button (e.g. invoice header); "compact" shows an icon-only button (e.g. table rows). */
   variant?: "compact" | "full";
-  /** Only admins can reverse a paid invoice, and only after re-entering their password. */
-  isAdmin?: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isUnpaidModalOpen, setIsUnpaidModalOpen] = useState(false);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const router = useRouter();
 
+  const isUnpaid = status === "UNPAID";
   const isPaid = status === "PAID";
+  const isCancelled = status === "CANCELLED";
 
   function markAsPaid() {
     startTransition(async () => {
@@ -40,7 +41,7 @@ export default function InvoiceStatusToggle({
   return (
     <div className="flex items-center gap-2">
       <StatusBadge status={status} />
-      {!isPaid &&
+      {isUnpaid &&
         (variant === "full" ? (
           <button
             type="button"
@@ -65,7 +66,6 @@ export default function InvoiceStatusToggle({
         ))}
 
       {isPaid &&
-        isAdmin &&
         (variant === "full" ? (
           <button
             type="button"
@@ -87,10 +87,32 @@ export default function InvoiceStatusToggle({
           </button>
         ))}
 
+      {!isCancelled &&
+        (variant === "full" ? (
+          <button
+            type="button"
+            onClick={() => setIsCancelModalOpen(true)}
+            className="flex items-center gap-1.5 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-danger-muted hover:text-danger"
+          >
+            <Ban size={14} />
+            Cancel Invoice
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setIsCancelModalOpen(true)}
+            title="Cancel Invoice"
+            aria-label="Cancel Invoice"
+            className="flex items-center justify-center rounded-md border border-border p-1 text-muted-foreground hover:bg-danger-muted hover:text-danger"
+          >
+            <Ban size={13} />
+          </button>
+        ))}
+
       {isConfirmOpen && (
         <ConfirmModal
           title="Mark as Paid?"
-          message="This marks the invoice as paid. Reverting it back to unpaid later requires an admin to confirm with their password."
+          message="This marks the invoice as paid. Reverting it back to unpaid later requires an admin password to confirm."
           confirmLabel={isPending ? "Marking as Paid..." : "Mark as Paid"}
           tone="success"
           isPending={isPending}
@@ -105,6 +127,17 @@ export default function InvoiceStatusToggle({
           onClose={() => setIsUnpaidModalOpen(false)}
           onSuccess={() => {
             setIsUnpaidModalOpen(false);
+            router.refresh();
+          }}
+        />
+      )}
+
+      {isCancelModalOpen && (
+        <CancelInvoiceModal
+          invoiceId={invoiceId}
+          onClose={() => setIsCancelModalOpen(false)}
+          onSuccess={() => {
+            setIsCancelModalOpen(false);
             router.refresh();
           }}
         />

@@ -45,8 +45,9 @@ export async function getAllCustomers(page = 1, query?: string, sort?: string) {
         phone: true,
         email: true,
         createdAt: true,
-        _count: { select: { invoices: true } },
-        invoices: { select: { total: true } },
+        // Cancelled invoices are void — excluded from both the count and the total.
+        _count: { select: { invoices: { where: { status: { not: "CANCELLED" } } } } },
+        invoices: { where: { status: { not: "CANCELLED" } }, select: { total: true } },
       },
     }),
     prisma.customer.count({ where }),
@@ -82,7 +83,8 @@ export async function getCustomerById(id: string) {
       address: true,
       taxId: true,
       createdAt: true,
-      invoices: { select: { total: true, status: true } },
+      // Cancelled invoices are void — excluded from this customer's totals entirely.
+      invoices: { where: { status: { not: "CANCELLED" } }, select: { total: true, status: true } },
     },
   });
 

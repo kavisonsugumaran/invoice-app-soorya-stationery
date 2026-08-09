@@ -45,7 +45,6 @@ export default async function InvoicePrintPage({
             invoiceId={invoice.id}
             status={invoice.status}
             variant="full"
-            isAdmin={isAdmin}
           />
         </div>
       </div>
