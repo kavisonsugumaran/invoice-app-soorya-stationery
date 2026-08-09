@@ -66,6 +66,7 @@ type BusinessInfo = {
 
 export type InvoiceFormInitialData = {
   billTo: { name: string; phone: string; address: string; taxId: string; customerId: string | null };
+  date: string;
   dateOfDelivery: string;
   placeOfSupply: string;
   modeOfPayment: string;
@@ -74,6 +75,13 @@ export type InvoiceFormInitialData = {
   taxPercent: number;
   items: InvoiceItemInput[];
 };
+
+function todayDateInputValue(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
 
 type InvoiceFormProps = {
   business: BusinessInfo;
@@ -118,12 +126,16 @@ export default function InvoiceForm(props: InvoiceFormProps) {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
     initial?.billTo.customerId ?? null
   );
+  const [date, setDate] = useState(initial?.date ?? todayDateInputValue());
   const [dateOfDelivery, setDateOfDelivery] = useState(initial?.dateOfDelivery ?? "");
   const [placeOfSupply, setPlaceOfSupply] = useState(initial?.placeOfSupply ?? "");
   const [modeOfPayment, setModeOfPayment] = useState(initial?.modeOfPayment ?? "");
   const [additionalInfo, setAdditionalInfo] = useState(initial?.additionalInfo ?? "");
   const [taxEnabled, setTaxEnabled] = useState(initial?.taxEnabled ?? false);
   const [taxPercent, setTaxPercent] = useState(initial?.taxPercent ?? 0);
+  // TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md).
+  // Create-mode only; remove this state and its UI once the backfill is done.
+  const [isOldInvoice, setIsOldInvoice] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -215,10 +227,15 @@ export default function InvoiceForm(props: InvoiceFormProps) {
         taxId: billToTaxId,
         customerId: selectedCustomerId ?? undefined,
       },
+      date,
       dateOfDelivery,
       placeOfSupply,
       modeOfPayment,
       additionalInfo,
+      // TEMPORARY (Aug 2026 backfill) — isOldInvoice is only ever true from
+      // the create form; irrelevant on edit since updateInvoice() never
+      // regenerates invoiceNo regardless.
+      ...(isEdit ? {} : { isOldInvoice }),
     };
 
     startTransition(async () => {
@@ -316,6 +333,16 @@ export default function InvoiceForm(props: InvoiceFormProps) {
         <h2 className="text-sm font-semibold text-muted-foreground">Invoice Details</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Date of Invoice
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              required
+              className="rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Date of Supply
             <input
               type="date"
@@ -350,6 +377,27 @@ export default function InvoiceForm(props: InvoiceFormProps) {
           </label>
         </div>
       </div>
+
+      {/* TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md).
+          Remove this block once the client finishes backfilling old invoices. */}
+      {!isEdit && (
+        <label className="flex items-start gap-2 rounded-md border border-border bg-surface-muted px-3 py-2.5 text-sm">
+          <input
+            type="checkbox"
+            checked={isOldInvoice}
+            onChange={(e) => setIsOldInvoice(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-primary"
+          />
+          <span>
+            <span className="font-medium text-foreground">This is a backfilled paper invoice</span>
+            <span className="block text-xs text-muted-foreground">
+              Gets a temporary placeholder number (e.g. OLD-00001) instead of the next real invoice
+              number, so entering old handwritten invoices doesn&apos;t use up today&apos;s numbering.
+              An admin will set the real invoice number later.
+            </span>
+          </span>
+        </label>
+      )}
 
       <div className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-muted-foreground">Items</h2>

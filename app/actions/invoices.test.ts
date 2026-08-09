@@ -3,7 +3,13 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "@/tests/reset-db";
 import { getCurrentUser } from "@/lib/dal";
-import { createInvoice, updateInvoice, updateInvoiceStatus, revertInvoiceToUnpaid } from "./invoices";
+import {
+  createInvoice,
+  updateInvoice,
+  updateInvoiceStatus,
+  revertInvoiceToUnpaid,
+  cancelInvoice,
+} from "./invoices";
 
 vi.mock("@/lib/dal", () => ({
   getCurrentUser: vi.fn(),
@@ -98,7 +104,7 @@ describe("createInvoice", () => {
     expect(result.invoiceNo).toMatch(GAZETTE_2481_22_FORMAT);
     expect(result.invoiceNo.length).toBeLessThanOrEqual(40);
     expect(result.invoiceNo).not.toContain(" ");
-    expect(result.invoiceNo).toContain("_SRY_");
+    expect(result.invoiceNo).toContain("_SST_");
   });
 
   it("uses the configured BusinessSettings.invoiceUnitCode when set", async () => {
@@ -136,6 +142,170 @@ describe("createInvoice", () => {
     const prefix = first.invoiceNo.slice(0, first.invoiceNo.lastIndexOf("_") + 1);
     expect(second.invoiceNo).toBe(`${prefix}00002`);
     expect(first.invoiceNo).toBe(`${prefix}00001`);
+  });
+
+  it("sets the invoice date from input.date, defaulting to now when omitted", async () => {
+    const user = await createTestUser("USER");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+    });
+
+    const withDate = await createInvoice({ ...baseInvoiceInput, date: "2026-03-15" });
+    if (!withDate.success) throw new Error("expected success");
+    const invoice = await prisma.invoice.findUnique({ where: { id: withDate.id } });
+    expect(invoice?.date.toISOString().slice(0, 10)).toBe("2026-03-15");
+
+    const withoutDate = await createInvoice(baseInvoiceInput);
+    if (!withoutDate.success) throw new Error("expected success");
+    const invoice2 = await prisma.invoice.findUnique({ where: { id: withoutDate.id } });
+    const today = new Date().toISOString().slice(0, 10);
+    expect(invoice2?.date.toISOString().slice(0, 10)).toBe(today);
+  });
+});
+
+// TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md).
+// Remove this whole describe block once the feature it covers is removed.
+describe("createInvoice — temporary Aug 2026 backfill support", () => {
+  async function loginAsStaff() {
+    const user = await createTestUser("USER");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+    });
+  }
+
+  it("assigns an OLD-XXXXX placeholder for a backfilled invoice, never a Gazette-format number", async () => {
+    await loginAsStaff();
+
+    const result = await createInvoice({ ...baseInvoiceInput, isOldInvoice: true });
+
+    if (!result.success) throw new Error("expected success");
+    expect(result.invoiceNo).toBe("OLD-00001");
+  });
+
+  it("backfilled invoices never advance the real Gazette counter", async () => {
+    await loginAsStaff();
+
+    await createInvoice({ ...baseInvoiceInput, isOldInvoice: true });
+    await createInvoice({ ...baseInvoiceInput, isOldInvoice: true });
+    const real = await createInvoice(baseInvoiceInput);
+
+    if (!real.success) throw new Error("expected success");
+    expect(real.invoiceNo).toMatch(/_00001$/);
+  });
+
+  it("applies the serial floor only when BusinessSettings has it explicitly set, and only in August", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-15T10:00:00Z"));
+    try {
+      await prisma.businessSettings.create({
+        data: {
+          id: "default",
+          businessName: "Test Shop",
+          tempInvoiceSerialFloorAugust2026: 422,
+        },
+      });
+      await loginAsStaff();
+
+      const first = await createInvoice(baseInvoiceInput);
+      const second = await createInvoice(baseInvoiceInput);
+
+      if (!first.success || !second.success) throw new Error("expected success");
+      expect(first.invoiceNo).toBe("26AUG_SST_00422");
+      expect(second.invoiceNo).toBe("26AUG_SST_00423");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps assigning correct sequential numbers well past the floor, with pre-existing rows creating a gap (regression: a row-count-based base would run out of unique-number retries and start failing)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-15T10:00:00Z"));
+    try {
+      // Mirrors production's real shape: a handful of pre-existing invoices
+      // (from before the floor was set) at low numbers, then a floor that
+      // jumps far ahead of that count.
+      for (let i = 1; i <= 18; i++) {
+        await prisma.invoice.create({
+          data: {
+            invoiceNo: `26AUG_SST_${String(i).padStart(5, "0")}`,
+            subtotal: 0,
+            taxAmount: 0,
+            total: 0,
+          },
+        });
+      }
+      await prisma.businessSettings.create({
+        data: {
+          id: "default",
+          businessName: "Test Shop",
+          tempInvoiceSerialFloorAugust2026: 422,
+        },
+      });
+      await loginAsStaff();
+
+      const invoiceNos: string[] = [];
+      for (let i = 0; i < 8; i++) {
+        const result = await createInvoice(baseInvoiceInput);
+        if (!result.success) throw new Error(`invoice ${i + 1} failed: ${result.error}`);
+        invoiceNos.push(result.invoiceNo);
+      }
+
+      expect(invoiceNos).toEqual([
+        "26AUG_SST_00422",
+        "26AUG_SST_00423",
+        "26AUG_SST_00424",
+        "26AUG_SST_00425",
+        "26AUG_SST_00426",
+        "26AUG_SST_00427",
+        "26AUG_SST_00428",
+        "26AUG_SST_00429",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not apply any floor when the field is left unset", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-15T10:00:00Z"));
+    try {
+      await loginAsStaff();
+
+      const result = await createInvoice(baseInvoiceInput);
+
+      if (!result.success) throw new Error("expected success");
+      expect(result.invoiceNo).toBe("26AUG_SST_00001");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never lets the floor leak into September, even if the field is still set", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-15T10:00:00Z"));
+    try {
+      await prisma.businessSettings.create({
+        data: {
+          id: "default",
+          businessName: "Test Shop",
+          tempInvoiceSerialFloorAugust2026: 422,
+        },
+      });
+      await loginAsStaff();
+
+      const result = await createInvoice(baseInvoiceInput);
+
+      if (!result.success) throw new Error("expected success");
+      expect(result.invoiceNo).toBe("26SEP_SST_00001");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -249,6 +419,42 @@ describe("updateInvoice", () => {
 
     expect(result).toEqual({ success: false, error: "Admins only." });
   });
+
+  it("updates the invoice date when one is provided", async () => {
+    const admin = await createTestUser("ADMIN");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: admin.id,
+      username: admin.username,
+      name: admin.name,
+      role: admin.role,
+    });
+    const created = await createInvoice({ ...baseInvoiceInput, date: "2026-03-15" });
+    if (!created.success) throw new Error("setup failed");
+
+    const result = await updateInvoice(created.id, { ...baseInvoiceInput, date: "2026-04-20" });
+
+    expect(result).toEqual({ success: true });
+    const invoice = await prisma.invoice.findUnique({ where: { id: created.id } });
+    expect(invoice?.date.toISOString().slice(0, 10)).toBe("2026-04-20");
+  });
+
+  it("leaves the invoice date unchanged when none is provided", async () => {
+    const admin = await createTestUser("ADMIN");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: admin.id,
+      username: admin.username,
+      name: admin.name,
+      role: admin.role,
+    });
+    const created = await createInvoice({ ...baseInvoiceInput, date: "2026-03-15" });
+    if (!created.success) throw new Error("setup failed");
+
+    const result = await updateInvoice(created.id, baseInvoiceInput);
+
+    expect(result).toEqual({ success: true });
+    const invoice = await prisma.invoice.findUnique({ where: { id: created.id } });
+    expect(invoice?.date.toISOString().slice(0, 10)).toBe("2026-03-15");
+  });
 });
 
 describe("updateInvoiceStatus", () => {
@@ -286,7 +492,33 @@ describe("revertInvoiceToUnpaid", () => {
     return created.id;
   }
 
-  it("rejects a non-admin caller", async () => {
+  it("rejects when there is no authenticated user", async () => {
+    mockedGetCurrentUser.mockResolvedValue(null);
+
+    const result = await revertInvoiceToUnpaid("does-not-matter", "whatever");
+
+    expect(result).toEqual({ success: false, error: "Please sign in." });
+  });
+
+  it("lets a staff member authorize the action with a valid admin's password", async () => {
+    await createTestUserWithPassword("admin-password", "ADMIN");
+    const staff = await createTestUserWithPassword("staff-password", "USER");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: staff.id,
+      username: staff.username,
+      name: staff.name,
+      role: staff.role,
+    });
+    const invoiceId = await createPaidInvoice();
+
+    const result = await revertInvoiceToUnpaid(invoiceId, "admin-password");
+
+    expect(result).toEqual({ success: true });
+    const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
+    expect(invoice?.status).toBe("UNPAID");
+  });
+
+  it("rejects a staff member's own password — it isn't an admin's", async () => {
     const staff = await createTestUserWithPassword("staff-password", "USER");
     mockedGetCurrentUser.mockResolvedValue({
       id: staff.id,
@@ -298,9 +530,25 @@ describe("revertInvoiceToUnpaid", () => {
 
     const result = await revertInvoiceToUnpaid(invoiceId, "staff-password");
 
-    expect(result).toEqual({ success: false, error: "Admins only." });
+    expect(result).toEqual({ success: false, error: "Incorrect password." });
     const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
     expect(invoice?.status).toBe("PAID");
+  });
+
+  it("ignores a deactivated admin's password", async () => {
+    const deactivatedAdmin = await createTestUserWithPassword("old-admin-password", "ADMIN");
+    await prisma.user.update({ where: { id: deactivatedAdmin.id }, data: { isActive: false } });
+    mockedGetCurrentUser.mockResolvedValue({
+      id: deactivatedAdmin.id,
+      username: deactivatedAdmin.username,
+      name: deactivatedAdmin.name,
+      role: deactivatedAdmin.role,
+    });
+    const invoiceId = await createPaidInvoice();
+
+    const result = await revertInvoiceToUnpaid(invoiceId, "old-admin-password");
+
+    expect(result).toEqual({ success: false, error: "Incorrect password." });
   });
 
   it("rejects an incorrect admin password and leaves the invoice PAID", async () => {
@@ -339,7 +587,7 @@ describe("revertInvoiceToUnpaid", () => {
     });
   });
 
-  it("reverts a PAID invoice to UNPAID when the admin's password is correct", async () => {
+  it("reverts a PAID invoice to UNPAID when a valid admin password is provided", async () => {
     const admin = await createTestUserWithPassword("correct-password", "ADMIN");
     mockedGetCurrentUser.mockResolvedValue({
       id: admin.id,
@@ -354,5 +602,125 @@ describe("revertInvoiceToUnpaid", () => {
     expect(result).toEqual({ success: true });
     const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
     expect(invoice?.status).toBe("UNPAID");
+  });
+});
+
+describe("cancelInvoice", () => {
+  it("rejects when there is no authenticated user", async () => {
+    mockedGetCurrentUser.mockResolvedValue(null);
+
+    const result = await cancelInvoice("does-not-matter", "whatever");
+
+    expect(result).toEqual({ success: false, error: "Please sign in." });
+  });
+
+  it("lets a staff member authorize the action with a valid admin's password", async () => {
+    await createTestUserWithPassword("admin-password", "ADMIN");
+    const staff = await createTestUserWithPassword("staff-password", "USER");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: staff.id,
+      username: staff.username,
+      name: staff.name,
+      role: staff.role,
+    });
+    const created = await createInvoice(baseInvoiceInput);
+    if (!created.success) throw new Error("setup failed");
+
+    const result = await cancelInvoice(created.id, "admin-password");
+
+    expect(result).toEqual({ success: true });
+    const invoice = await prisma.invoice.findUnique({ where: { id: created.id } });
+    expect(invoice?.status).toBe("CANCELLED");
+  });
+
+  it("rejects an incorrect admin password and leaves the invoice UNPAID", async () => {
+    const admin = await createTestUserWithPassword("correct-password", "ADMIN");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: admin.id,
+      username: admin.username,
+      name: admin.name,
+      role: admin.role,
+    });
+    const created = await createInvoice(baseInvoiceInput);
+    if (!created.success) throw new Error("setup failed");
+
+    const result = await cancelInvoice(created.id, "wrong-password");
+
+    expect(result).toEqual({ success: false, error: "Incorrect password." });
+    const invoice = await prisma.invoice.findUnique({ where: { id: created.id } });
+    expect(invoice?.status).toBe("UNPAID");
+  });
+
+  it("cancels an UNPAID invoice when a valid admin password is provided", async () => {
+    const admin = await createTestUserWithPassword("correct-password", "ADMIN");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: admin.id,
+      username: admin.username,
+      name: admin.name,
+      role: admin.role,
+    });
+    const created = await createInvoice(baseInvoiceInput);
+    if (!created.success) throw new Error("setup failed");
+
+    const result = await cancelInvoice(created.id, "correct-password");
+
+    expect(result).toEqual({ success: true });
+    const invoice = await prisma.invoice.findUnique({ where: { id: created.id } });
+    expect(invoice?.status).toBe("CANCELLED");
+  });
+
+  it("cancels a PAID invoice directly, without needing to revert to unpaid first", async () => {
+    const admin = await createTestUserWithPassword("correct-password", "ADMIN");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: admin.id,
+      username: admin.username,
+      name: admin.name,
+      role: admin.role,
+    });
+    const created = await createInvoice(baseInvoiceInput);
+    if (!created.success) throw new Error("setup failed");
+    await updateInvoiceStatus(created.id, "PAID");
+
+    const result = await cancelInvoice(created.id, "correct-password");
+
+    expect(result).toEqual({ success: true });
+    const invoice = await prisma.invoice.findUnique({ where: { id: created.id } });
+    expect(invoice?.status).toBe("CANCELLED");
+  });
+
+  it("refuses to cancel an already-cancelled invoice", async () => {
+    const admin = await createTestUserWithPassword("correct-password", "ADMIN");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: admin.id,
+      username: admin.username,
+      name: admin.name,
+      role: admin.role,
+    });
+    const created = await createInvoice(baseInvoiceInput);
+    if (!created.success) throw new Error("setup failed");
+    await cancelInvoice(created.id, "correct-password");
+
+    const result = await cancelInvoice(created.id, "correct-password");
+
+    expect(result).toEqual({ success: false, error: "This invoice is already cancelled." });
+  });
+
+  it("cancelled invoices can never be changed again via updateInvoiceStatus", async () => {
+    const admin = await createTestUserWithPassword("correct-password", "ADMIN");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: admin.id,
+      username: admin.username,
+      name: admin.name,
+      role: admin.role,
+    });
+    const created = await createInvoice(baseInvoiceInput);
+    if (!created.success) throw new Error("setup failed");
+    await cancelInvoice(created.id, "correct-password");
+
+    const result = await updateInvoiceStatus(created.id, "PAID");
+
+    expect(result).toEqual({ success: false, error: "A cancelled invoice cannot be changed." });
+    const invoice = await prisma.invoice.findUnique({ where: { id: created.id } });
+    expect(invoice?.status).toBe("CANCELLED");
   });
 });

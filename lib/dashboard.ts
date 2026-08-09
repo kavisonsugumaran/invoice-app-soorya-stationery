@@ -23,7 +23,12 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
   const [totals, paid, unpaid, invoiceCountThisMonth, invoiceCountLastMonth] =
     await Promise.all([
-      prisma.invoice.aggregate({ _sum: { total: true }, _count: true }),
+      // Cancelled invoices are void — excluded from every revenue figure below.
+      prisma.invoice.aggregate({
+        _sum: { total: true },
+        _count: true,
+        where: { status: { not: "CANCELLED" } },
+      }),
       prisma.invoice.aggregate({
         _sum: { total: true },
         _count: true,
@@ -59,7 +64,7 @@ export async function getMonthlyRevenueTrend(
   const rangeStart = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
 
   const invoices = await prisma.invoice.findMany({
-    where: { createdAt: { gte: rangeStart } },
+    where: { createdAt: { gte: rangeStart }, status: { not: "CANCELLED" } },
     select: { createdAt: true, total: true },
   });
 

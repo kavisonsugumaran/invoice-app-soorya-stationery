@@ -46,8 +46,12 @@ export async function getAllProducts(page = 1, query?: string, sort?: string) {
         name: true,
         price: true,
         createdAt: true,
-        _count: { select: { items: true } },
-        items: { select: { lineTotal: true } },
+        // Line items on a cancelled invoice don't count as real usage/revenue.
+        _count: { select: { items: { where: { invoice: { status: { not: "CANCELLED" } } } } } },
+        items: {
+          where: { invoice: { status: { not: "CANCELLED" } } },
+          select: { lineTotal: true },
+        },
       },
     }),
     prisma.product.count({ where }),
@@ -81,7 +85,11 @@ export async function getProductById(id: string) {
       name: true,
       price: true,
       createdAt: true,
-      items: { select: { lineTotal: true } },
+      // Line items on a cancelled invoice don't count as real usage/revenue.
+      items: {
+        where: { invoice: { status: { not: "CANCELLED" } } },
+        select: { lineTotal: true },
+      },
     },
   });
 
