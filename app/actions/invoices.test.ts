@@ -179,20 +179,47 @@ describe("createInvoice — temporary Aug 2026 backfill support", () => {
     });
   }
 
-  it("assigns an OLD-XXXXX placeholder for a backfilled invoice, never a Gazette-format number", async () => {
+  it("uses the client-typed invoice number verbatim for a backfilled invoice, never a Gazette-format number", async () => {
+    await loginAsStaff();
+
+    const result = await createInvoice({
+      ...baseInvoiceInput,
+      isOldInvoice: true,
+      oldInvoiceNo: "26JUL_SST_00150",
+    });
+
+    if (!result.success) throw new Error("expected success");
+    expect(result.invoiceNo).toBe("26JUL_SST_00150");
+  });
+
+  it("requires oldInvoiceNo when isOldInvoice is true", async () => {
     await loginAsStaff();
 
     const result = await createInvoice({ ...baseInvoiceInput, isOldInvoice: true });
 
-    if (!result.success) throw new Error("expected success");
-    expect(result.invoiceNo).toBe("OLD-00001");
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a duplicate oldInvoiceNo with a friendly error instead of throwing", async () => {
+    await loginAsStaff();
+
+    await createInvoice({ ...baseInvoiceInput, isOldInvoice: true, oldInvoiceNo: "DUPLICATE-001" });
+    const result = await createInvoice({
+      ...baseInvoiceInput,
+      isOldInvoice: true,
+      oldInvoiceNo: "DUPLICATE-001",
+    });
+
+    expect(result.success).toBe(false);
+    if (result.success) throw new Error("expected failure");
+    expect(result.error).toMatch(/already in use/i);
   });
 
   it("backfilled invoices never advance the real Gazette counter", async () => {
     await loginAsStaff();
 
-    await createInvoice({ ...baseInvoiceInput, isOldInvoice: true });
-    await createInvoice({ ...baseInvoiceInput, isOldInvoice: true });
+    await createInvoice({ ...baseInvoiceInput, isOldInvoice: true, oldInvoiceNo: "OLD-A" });
+    await createInvoice({ ...baseInvoiceInput, isOldInvoice: true, oldInvoiceNo: "OLD-B" });
     const real = await createInvoice(baseInvoiceInput);
 
     if (!real.success) throw new Error("expected success");
