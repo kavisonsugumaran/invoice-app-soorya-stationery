@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/dal";
 import {
   createInvoice,
   updateInvoice,
+  updateInvoiceNumber,
   updateInvoiceStatus,
   revertInvoiceToUnpaid,
   cancelInvoice,
@@ -333,6 +334,75 @@ describe("createInvoice — temporary Aug 2026 backfill support", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md).
+// Remove this whole describe block once the feature it covers is removed.
+describe("updateInvoiceNumber — temporary Aug 2026 backfill support", () => {
+  async function createTestInvoice(invoiceNo: string) {
+    return prisma.invoice.create({
+      data: { invoiceNo, subtotal: 0, taxAmount: 0, total: 0 },
+    });
+  }
+
+  it("lets a non-admin staff member correct an invoice number", async () => {
+    const user = await createTestUser("USER");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+    });
+    const invoice = await createTestInvoice("OLD-00011");
+
+    const result = await updateInvoiceNumber(invoice.id, "26JUL_SST_00042");
+
+    expect(result.success).toBe(true);
+    const updated = await prisma.invoice.findUnique({ where: { id: invoice.id } });
+    expect(updated?.invoiceNo).toBe("26JUL_SST_00042");
+  });
+
+  it("rejects a blank invoice number", async () => {
+    const user = await createTestUser("USER");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+    });
+    const invoice = await createTestInvoice("OLD-00012");
+
+    const result = await updateInvoiceNumber(invoice.id, "   ");
+
+    expect(result.success).toBe(false);
+  });
+
+  it("returns a friendly error on a duplicate invoice number instead of throwing", async () => {
+    const user = await createTestUser("USER");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+    });
+    await createTestInvoice("TAKEN-001");
+    const invoice = await createTestInvoice("OLD-00013");
+
+    const result = await updateInvoiceNumber(invoice.id, "TAKEN-001");
+
+    expect(result.success).toBe(false);
+    if (result.success) throw new Error("expected failure");
+    expect(result.error).toMatch(/already in use/i);
+  });
+
+  it("rejects when there is no authenticated user", async () => {
+    mockedGetCurrentUser.mockResolvedValue(null);
+    const invoice = await createTestInvoice("OLD-00014");
+
+    const result = await updateInvoiceNumber(invoice.id, "26JUL_SST_00099");
+
+    expect(result.success).toBe(false);
   });
 });
 

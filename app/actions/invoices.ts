@@ -388,6 +388,46 @@ export async function createInvoice(
   return { success: false, error: "Could not generate a unique invoice number. Please try again." };
 }
 
+export type UpdateInvoiceNumberResult = { success: true } | { success: false; error: string };
+
+/**
+ * TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md):
+ * lets any authenticated staff member correct an invoice's invoiceNo directly
+ * (e.g. a typo in a client-typed old-invoice number) — narrower than the
+ * full updateInvoice(), which stays admin-only. Remove once the backfill is
+ * finished and invoice numbers no longer need manual correction.
+ */
+export async function updateInvoiceNumber(
+  invoiceId: string,
+  newInvoiceNo: string
+): Promise<UpdateInvoiceNumberResult> {
+  const auth = await requireUser();
+  if (!auth.ok) return { success: false, error: auth.error };
+
+  const trimmed = newInvoiceNo.trim();
+  if (!trimmed) {
+    return { success: false, error: "Invoice number is required." };
+  }
+  if (trimmed.length > 40) {
+    return { success: false, error: "Invoice number must be 40 characters or fewer." };
+  }
+
+  try {
+    await prisma.invoice.update({
+      where: { id: invoiceId },
+      data: { invoiceNo: trimmed },
+    });
+    return { success: true };
+  } catch (error) {
+    const isUniqueConflict =
+      error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+    if (isUniqueConflict) {
+      return { success: false, error: `Invoice number "${trimmed}" is already in use.` };
+    }
+    throw error;
+  }
+}
+
 export type UpdateInvoiceResult = { success: true } | { success: false; error: string };
 
 export async function updateInvoice(

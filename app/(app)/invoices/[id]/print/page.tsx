@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import InvoicePreviewPanel from "@/components/invoices/InvoicePreviewPanel";
 import InvoiceStatusToggle from "@/components/invoices/InvoiceStatusToggle";
+import EditInvoiceNumberControl from "@/components/invoices/EditInvoiceNumberControl";
 import { getInvoiceById } from "@/lib/invoices";
 import { getBusinessSettings } from "@/lib/settings";
 import { verifySession } from "@/lib/dal";
@@ -45,6 +46,7 @@ export default async function InvoicePrintPage({
               Created by {invoice.createdBy.name}
             </span>
           )}
+          <EditInvoiceNumberControl invoiceId={invoice.id} invoiceNo={invoice.invoiceNo} />
           <InvoiceStatusToggle
             invoiceId={invoice.id}
             status={invoice.status}
