@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, Printer } from "lucide-react";
 import InvoiceForm from "@/components/invoice-form/InvoiceForm";
 import InvoiceStatusToggle from "@/components/invoices/InvoiceStatusToggle";
+import EditInvoiceNumberControl from "@/components/invoices/EditInvoiceNumberControl";
 import { getInvoiceById } from "@/lib/invoices";
 import { getBusinessSettings } from "@/lib/settings";
 import { getCustomerDirectory } from "@/lib/customers";
@@ -51,6 +52,7 @@ export default async function InvoiceDetailPage({
               Created by {invoice.createdBy.name}
             </span>
           )}
+          <EditInvoiceNumberControl invoiceId={invoice.id} invoiceNo={invoice.invoiceNo} />
           <Link
             href={`/invoices/${invoice.id}/print`}
             className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
