@@ -54,7 +54,10 @@ export default function InvoicePreviewPanel({
   const [mode, setMode] = useState<"form" | "digital">("form");
 
   return (
-    <div className="flex flex-col gap-3">
+    // Plain block layout (space-y-3, not flex flex-col) — a flex ancestor
+    // above the multi-page DotMatrixInvoice content breaks Chromium's print
+    // pagination (see the comment in DotMatrixInvoice.tsx).
+    <div className="space-y-3">
       <div className="flex gap-1 print:hidden">
         <button
           type="button"

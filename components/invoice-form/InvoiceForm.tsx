@@ -592,7 +592,11 @@ export default function InvoiceForm(props: InvoiceFormProps) {
   }
 
   return (
-    <div className="grid w-full max-w-7xl grid-cols-1 gap-6 lg:grid-cols-2">
+    // print:block overrides the grid — a grid/flex ancestor above the
+    // multi-page print content breaks Chromium's print pagination (see the
+    // comment in DotMatrixInvoice.tsx). The form is print:hidden anyway, so
+    // at print time this only ever has the one visible child.
+    <div className="grid w-full max-w-7xl grid-cols-1 gap-6 lg:grid-cols-2 print:block">
       <form
         onSubmit={handleSubmit}
         className="print:hidden flex flex-col gap-6 rounded-lg border border-border bg-surface p-6 shadow-sm"
@@ -601,7 +605,7 @@ export default function InvoiceForm(props: InvoiceFormProps) {
         {formFields}
       </form>
 
-      <div className="lg:sticky lg:top-6 lg:self-start">
+      <div className="lg:sticky lg:top-6 lg:self-start print:static">
         <InvoicePreviewPanel
           business={business}
           calibration={{

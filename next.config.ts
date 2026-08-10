@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // The dev-mode route indicator overlay is dev-server-only (absent in
+  // production either way) but it sits outside our component tree, so no
+  // print:hidden class we write can reach it — it leaked into local print
+  // testing as a spurious blank page. Off entirely rather than worked around.
+  devIndicators: false,
   experimental: {
     serverActions: {
       // Default 1MB is too small for a logo image upload.

@@ -72,6 +72,12 @@ export const DM_LAYOUT = {
 
   amountInWords: { xPct: 28, yPct: 85.4 } as FieldPos,
   modeOfPayment: { xPct: 28, yPct: 88.4 } as FieldPos,
+
+  // Bottom boundary for item rows — just above the "Total Value of Supply"
+  // row's border (that row's text sits at yPct 75.5), leaving a small buffer
+  // for row height/descenders. Once a page's rows would cross this line, the
+  // rest of the items overflow onto an additional physical page instead.
+  itemsAreaEndYPct: 73,
 } as const;
 
 export type DmCalibration = {
@@ -85,6 +91,24 @@ export type DmCalibration = {
 export function itemRowFieldPos(col: FieldPos, rowIndex: number, itemRowMm: number): FieldPos {
   const rowOffsetPct = ((rowIndex * itemRowMm) / DM_PAGE_HEIGHT_MM) * 100;
   return { ...col, yPct: DM_LAYOUT.itemsFirstRowYPct + rowOffsetPct };
+}
+
+/** How many item rows fit on one physical page before hitting the totals box, given the business's configured row height. */
+export function maxItemsPerPage(itemRowMm: number): number {
+  const rowPct = (itemRowMm / DM_PAGE_HEIGHT_MM) * 100;
+  const availablePct = DM_LAYOUT.itemsAreaEndYPct - DM_LAYOUT.itemsFirstRowYPct;
+  return Math.max(1, Math.floor(availablePct / rowPct) + 1);
+}
+
+/** Splits items into pages of at most maxItemsPerPage(itemRowMm), always returning at least one (possibly empty) page. */
+export function paginateItems<T>(items: T[], itemRowMm: number): T[][] {
+  const perPage = maxItemsPerPage(itemRowMm);
+  if (items.length === 0) return [[]];
+  const pages: T[][] = [];
+  for (let i = 0; i < items.length; i += perPage) {
+    pages.push(items.slice(i, i + perPage));
+  }
+  return pages;
 }
 
 /** Converts a layout field position + calibration offsets into absolute mm coordinates on the page. */
