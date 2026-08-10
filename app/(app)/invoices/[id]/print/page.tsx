@@ -26,8 +26,12 @@ export default async function InvoicePrintPage({
   const isAdmin = currentUser.role === "ADMIN";
 
   return (
-    <div className="flex flex-col items-center gap-6 p-6">
-      <div className="flex w-full max-w-3xl items-center justify-between print:hidden">
+    // Plain block layout (space-y-6, not flex flex-col items-center) — a flex
+    // ancestor above the multi-page print content breaks Chromium's print
+    // pagination (see the comment in DotMatrixInvoice.tsx). Centering moves
+    // to mx-auto on the fixed-width children instead.
+    <div className="space-y-6 p-6">
+      <div className="mx-auto flex w-full max-w-3xl items-center justify-between print:hidden">
         <Link
           href={isAdmin ? `/invoices/${invoice.id}` : "/invoices"}
           className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
@@ -49,7 +53,7 @@ export default async function InvoicePrintPage({
         </div>
       </div>
 
-      <div className="w-full max-w-3xl">
+      <div className="mx-auto w-full max-w-3xl">
         <InvoicePreviewPanel
           business={business}
           calibration={{

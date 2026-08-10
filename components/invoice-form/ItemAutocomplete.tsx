@@ -192,7 +192,7 @@ export default function ItemAutocomplete({
                 left: position.left,
                 width: Math.max(position.width, 256),
               }}
-              className="z-50 overflow-hidden rounded-md border border-border bg-surface shadow-md"
+              className="z-50 overflow-hidden rounded-md border border-border bg-surface shadow-md print:hidden"
             >
               {suggestions.map((product) => (
                 <li key={product.id}>
@@ -225,7 +225,7 @@ export default function ItemAutocomplete({
                   left: position.left,
                   width: Math.max(position.width, 256),
                 }}
-                className="z-50 flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm shadow-md"
+                className="z-50 flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm shadow-md print:hidden"
               >
                 <span className="text-muted-foreground">
                   Did you mean{" "}

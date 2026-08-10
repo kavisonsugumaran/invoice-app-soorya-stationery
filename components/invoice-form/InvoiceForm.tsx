@@ -136,6 +136,7 @@ export default function InvoiceForm(props: InvoiceFormProps) {
   // TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md).
   // Create-mode only; remove this state and its UI once the backfill is done.
   const [isOldInvoice, setIsOldInvoice] = useState(false);
+  const [oldInvoiceNo, setOldInvoiceNo] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -232,10 +233,10 @@ export default function InvoiceForm(props: InvoiceFormProps) {
       placeOfSupply,
       modeOfPayment,
       additionalInfo,
-      // TEMPORARY (Aug 2026 backfill) — isOldInvoice is only ever true from
-      // the create form; irrelevant on edit since updateInvoice() never
-      // regenerates invoiceNo regardless.
-      ...(isEdit ? {} : { isOldInvoice }),
+      // TEMPORARY (Aug 2026 backfill) — isOldInvoice/oldInvoiceNo are only
+      // ever set from the create form; irrelevant on edit since
+      // updateInvoice() never regenerates invoiceNo regardless.
+      ...(isEdit ? {} : { isOldInvoice, ...(isOldInvoice ? { oldInvoiceNo } : {}) }),
     };
 
     startTransition(async () => {
@@ -381,22 +382,35 @@ export default function InvoiceForm(props: InvoiceFormProps) {
       {/* TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md).
           Remove this block once the client finishes backfilling old invoices. */}
       {!isEdit && (
-        <label className="flex items-start gap-2 rounded-md border border-border bg-surface-muted px-3 py-2.5 text-sm">
-          <input
-            type="checkbox"
-            checked={isOldInvoice}
-            onChange={(e) => setIsOldInvoice(e.target.checked)}
-            className="mt-0.5 h-4 w-4 accent-primary"
-          />
-          <span>
-            <span className="font-medium text-foreground">This is a backfilled paper invoice</span>
-            <span className="block text-xs text-muted-foreground">
-              Gets a temporary placeholder number (e.g. OLD-00001) instead of the next real invoice
-              number, so entering old handwritten invoices doesn&apos;t use up today&apos;s numbering.
-              An admin will set the real invoice number later.
+        <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-muted px-3 py-2.5 text-sm">
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              checked={isOldInvoice}
+              onChange={(e) => setIsOldInvoice(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-primary"
+            />
+            <span>
+              <span className="font-medium text-foreground">This is a backfilled paper invoice</span>
+              <span className="block text-xs text-muted-foreground">
+                Type in the invoice number from the handwritten paper copy below, instead of
+                getting the next real invoice number — so entering old invoices doesn&apos;t use up
+                today&apos;s numbering.
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+          {isOldInvoice && (
+            <input
+              type="text"
+              value={oldInvoiceNo}
+              onChange={(e) => setOldInvoiceNo(e.target.value)}
+              placeholder="Invoice number from the paper copy"
+              maxLength={40}
+              required
+              className="rounded-md border border-border bg-transparent px-3 py-2 text-sm"
+            />
+          )}
+        </div>
       )}
 
       <div className="flex flex-col gap-3">
@@ -460,7 +474,7 @@ export default function InvoiceForm(props: InvoiceFormProps) {
                 <input
                   type="number"
                   min="0"
-                  max="10000"
+                  max="999999"
                   step="1"
                   value={item.quantity}
                   onChange={(e) =>
@@ -592,7 +606,11 @@ export default function InvoiceForm(props: InvoiceFormProps) {
   }
 
   return (
-    <div className="grid w-full max-w-7xl grid-cols-1 gap-6 lg:grid-cols-2">
+    // print:block overrides the grid — a grid/flex ancestor above the
+    // multi-page print content breaks Chromium's print pagination (see the
+    // comment in DotMatrixInvoice.tsx). The form is print:hidden anyway, so
+    // at print time this only ever has the one visible child.
+    <div className="grid w-full max-w-7xl grid-cols-1 gap-6 lg:grid-cols-2 print:block">
       <form
         onSubmit={handleSubmit}
         className="print:hidden flex flex-col gap-6 rounded-lg border border-border bg-surface p-6 shadow-sm"
@@ -601,7 +619,7 @@ export default function InvoiceForm(props: InvoiceFormProps) {
         {formFields}
       </form>
 
-      <div className="lg:sticky lg:top-6 lg:self-start">
+      <div className="lg:sticky lg:top-6 lg:self-start print:static">
         <InvoicePreviewPanel
           business={business}
           calibration={{
