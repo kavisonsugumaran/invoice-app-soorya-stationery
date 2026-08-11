@@ -416,13 +416,13 @@ export default function InvoiceForm(props: InvoiceFormProps) {
       <div className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-muted-foreground">Items</h2>
         <div className="overflow-x-auto">
-          <div className="grid min-w-[42rem] grid-cols-[1.5rem_4rem_1fr_5.5rem_3.5rem_9rem_1.75rem] gap-2 text-xs font-medium text-muted-foreground">
+          <div className="grid min-w-[44rem] grid-cols-[1.5rem_4rem_1fr_5.5rem_5rem_9rem_1.75rem] gap-2 text-xs font-medium text-muted-foreground">
             <span />
             <span>Ref.</span>
             <span>Item</span>
             <span>Price</span>
             <span>Qty</span>
-            <span>Line total</span>
+            <span className="text-right">Line total</span>
             <span />
           </div>
 
@@ -431,7 +431,7 @@ export default function InvoiceForm(props: InvoiceFormProps) {
             return (
               <div
                 key={item.id}
-                className="grid min-w-[42rem] grid-cols-[1.5rem_4rem_1fr_5.5rem_3.5rem_9rem_1.75rem] items-center gap-2"
+                className="grid min-w-[44rem] grid-cols-[1.5rem_4rem_1fr_5.5rem_5rem_9rem_1.75rem] items-center gap-2"
               >
                 <InitialsAvatar name={item.name} colorSeed={item.id} shape="square" size={24} />
                 <span
@@ -610,7 +610,19 @@ export default function InvoiceForm(props: InvoiceFormProps) {
     // multi-page print content breaks Chromium's print pagination (see the
     // comment in DotMatrixInvoice.tsx). The form is print:hidden anyway, so
     // at print time this only ever has the one visible child.
-    <div className="grid w-full max-w-7xl grid-cols-1 gap-6 lg:grid-cols-2 print:block">
+    //
+    // Columns are weighted 3fr/2fr rather than an even split: the form is
+    // the primary task and needs room for the items table (fixed min-width,
+    // to keep line-total figures from wrapping), while the preview is a
+    // fixed-size (physical paper dimensions) supplementary view that
+    // doesn't benefit from extra width the way the form does. max-w bumped
+    // from 7xl so wide monitors actually get to use that ratio instead of
+    // both columns getting capped down to the old ~1280px total first.
+    // Each track is wrapped in minmax(0,...) (same as Tailwind's built-in
+    // grid-cols-N does automatically, but arbitrary values don't) — without
+    // it, the preview's fixed-width paper content forces its track wider
+    // than 2fr, stealing space from the form again.
+    <div className="grid w-full max-w-[100rem] grid-cols-1 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] print:block">
       <form
         onSubmit={handleSubmit}
         className="print:hidden flex flex-col gap-6 rounded-lg border border-border bg-surface p-6 shadow-sm"
@@ -619,7 +631,11 @@ export default function InvoiceForm(props: InvoiceFormProps) {
         {formFields}
       </form>
 
-      <div className="lg:sticky lg:top-6 lg:self-start print:static">
+      {/* min-w-0: grid items default to min-width:auto (sized to their content's
+          min-content), which would let the fixed-width paper preview force this
+          column wider than its minmax(0,2fr) track allows. DotMatrixInvoice
+          scales its own content to fit whatever width this column ends up with. */}
+      <div className="min-w-0 lg:sticky lg:top-6 lg:self-start print:static">
         <InvoicePreviewPanel
           business={business}
           calibration={{
