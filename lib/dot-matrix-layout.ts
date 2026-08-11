@@ -58,7 +58,7 @@ export const DM_LAYOUT = {
   additionalInfo: { xPct: 29.5, yPct: 29.3 } as FieldPos,
 
   // Items table: row Y = itemsFirstRowYPct + (rowIndex * dmItemRowMm converted to %)
-  itemsFirstRowYPct: 41,
+  itemsFirstRowYPct: 39,
   itemsColRef: { xPct: 9, yPct: 0, align: "left" } as FieldPos,
   itemsColDescription: { xPct: 19, yPct: 0, align: "left" } as FieldPos,
   itemsColQty: { xPct: 65, yPct: 0, align: "right" } as FieldPos,

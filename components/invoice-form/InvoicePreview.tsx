@@ -79,7 +79,16 @@ export default function InvoicePreview({
   const invoiceDate = date ?? new Date();
 
   return (
-    <div className="flex w-full flex-col gap-4">
+    // Plain block layout (space-y-4, not flex flex-col) — a flex ancestor
+    // above printed content breaks Chromium's print pagination (see the
+    // comment in DotMatrixInvoice.tsx). Unlike the dot-matrix view, this
+    // document uses natural HTML flow (a real <table>, no fixed/absolute
+    // positioning), so it doesn't need manual page-splitting logic — the
+    // browser already paginates flowing content across pages on its own,
+    // repeating <thead> automatically. It just needs a defined page size
+    // and break-inside-avoid on things that shouldn't get cut mid-block.
+    <div className="w-full space-y-4">
+      <style>{`@page { size: A4; margin: 12mm; }`}</style>
       <div className="flex items-center justify-between print:hidden">
         <h2 className="text-sm font-semibold text-muted-foreground">Preview</h2>
         <button
@@ -92,7 +101,7 @@ export default function InvoicePreview({
         </button>
       </div>
 
-      <div className="invoice-document flex flex-col rounded-md border-2 bg-white p-6 text-black print:border print:p-0 print:shadow-none" style={{ borderColor: NAVY }}>
+      <div className="invoice-document rounded-md border-2 bg-white p-6 text-black print:border print:p-0 print:shadow-none" style={{ borderColor: NAVY }}>
         {/* Header */}
         <div className="flex flex-col items-center gap-2 pb-4 text-center">
           <h1
@@ -217,7 +226,7 @@ export default function InvoicePreview({
               </tr>
             ) : (
               items.map((item, index) => (
-                <tr key={index} className="border-t" style={{ borderColor: NAVY }}>
+                <tr key={index} className="break-inside-avoid border-t" style={{ borderColor: NAVY }}>
                   <td className="border-r px-2 py-1.5" style={{ borderColor: NAVY }}>
                     {item.reference}
                   </td>
@@ -238,7 +247,7 @@ export default function InvoicePreview({
         </table>
 
         {/* Totals */}
-        <div className="border border-t-0" style={{ borderColor: NAVY }}>
+        <div className="break-inside-avoid border border-t-0" style={{ borderColor: NAVY }}>
           <div
             className="flex items-center justify-between border-b px-3 py-1.5 text-sm"
             style={{ borderColor: NAVY }}
@@ -272,13 +281,13 @@ export default function InvoicePreview({
         </div>
 
         {/* Amount in words / Payment mode */}
-        <div className="border border-t-0 px-3 py-2 text-sm" style={{ borderColor: NAVY }}>
+        <div className="break-inside-avoid border border-t-0 px-3 py-2 text-sm" style={{ borderColor: NAVY }}>
           <span className="font-bold" style={{ color: NAVY }}>
             Total Amount In Words
           </span>
           <span className="ml-1">: {amountToWords(total)}</span>
         </div>
-        <div className="border border-t-0 px-3 py-2 text-sm" style={{ borderColor: NAVY }}>
+        <div className="break-inside-avoid border border-t-0 px-3 py-2 text-sm" style={{ borderColor: NAVY }}>
           <span className="font-bold" style={{ color: NAVY }}>
             Mode of Payment
           </span>
@@ -286,7 +295,7 @@ export default function InvoicePreview({
         </div>
 
         {/* Footer signatures */}
-        <div className="mt-12 grid grid-cols-3 gap-4 px-2 text-center text-xs">
+        <div className="mt-12 grid break-inside-avoid grid-cols-3 gap-4 px-2 text-center text-xs">
           <div className="border-t border-dotted pt-1" style={{ borderColor: NAVY }}>
             Authorised By
           </div>

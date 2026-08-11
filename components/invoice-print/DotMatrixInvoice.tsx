@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Printer } from "lucide-react";
 import { computeLineTotal } from "@/lib/invoice-math";
 import { amountToWords } from "@/lib/number-to-words";
@@ -183,6 +184,27 @@ export default function DotMatrixInvoice({
   const [addrLine1, addrLine2] = splitTwoLines(billTo.address);
   const pages = paginateItems(items, calibration.dmItemRowMm);
 
+  // Scales the whole preview down to fit whatever width its container
+  // actually has, like a real print-preview does — the paper size itself
+  // (DM_PAGE_WIDTH_MM) is fixed/non-negotiable (it has to match the real
+  // stationery), so when the container is narrower, shrinking visually is
+  // the alternative to a horizontal scrollbar hiding part of the page.
+  // 96/25.4 is the CSS spec's defined mm-to-px ratio for absolute units,
+  // not a guess — reliable across browsers.
+  const pageWidthPx = (DM_PAGE_WIDTH_MM * 96) / 25.4;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setScale(Math.min(1, entry.contentRect.width / pageWidthPx));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [pageWidthPx]);
+
   return (
     // Deliberately plain block layout (space-y-*, not flex flex-col gap-*)
     // all the way down to the .dm-page elements — Chromium's print engine
@@ -208,7 +230,11 @@ export default function DotMatrixInvoice({
         </div>
       )}
 
-      <div className="space-y-6 print:space-y-0">
+      <div
+        ref={containerRef}
+        style={{ "--dm-scale": scale } as React.CSSProperties}
+        className="space-y-6 print:space-y-0"
+      >
         {pages.map((pageItems, pageIndex) => {
           const isLastPage = pageIndex === pages.length - 1;
           return (
@@ -219,11 +245,18 @@ export default function DotMatrixInvoice({
                   {!isLastPage ? " — continued on next page" : ""}
                 </div>
               )}
+              {/* Reserves the visually-scaled height in the layout (the
+                  transform below doesn't shrink the space the element would
+                  otherwise occupy) and clips any rounding overflow. Reset
+                  to the real size for actual printing. */}
               <div
-                className="dm-page relative bg-white"
-                style={{
-                  width: `${DM_PAGE_WIDTH_MM}mm`,
-                  height: `${DM_PAGE_HEIGHT_MM}mm`,
+                className={`overflow-hidden print:h-auto print:overflow-visible [height:calc(${DM_PAGE_HEIGHT_MM}mm*var(--dm-scale,1))]`}
+              >
+                <div
+                  className="dm-page relative bg-white origin-top-left [transform:scale(var(--dm-scale,1))] print:[transform:none]"
+                  style={{
+                    width: `${DM_PAGE_WIDTH_MM}mm`,
+                    height: `${DM_PAGE_HEIGHT_MM}mm`,
                   breakAfter: !isLastPage ? "page" : undefined,
                 }}
               >
@@ -354,6 +387,7 @@ export default function DotMatrixInvoice({
                     </Field>
                   </>
                 )}
+                </div>
               </div>
             </div>
           );
