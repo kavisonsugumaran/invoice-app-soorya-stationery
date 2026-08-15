@@ -49,10 +49,16 @@ export type FieldPos = {
 // earlier), not something to chase via calibration again. "Right more"
 // fields (tax invoice no, purchaser info, place of supply) got a bigger
 // nudge than "right slightly" fields (dates, additional info).
+//
+// Second polish pass on a follow-up printout: taxInvoiceLabel (the "TAX
+// INVOICE" badge) needed the same up+right treatment as the rest of that
+// header block, just hadn't been flagged yet. vatPercent/amountInWords/
+// modeOfPayment each needed a small upward nudge — small residual drift
+// noticed once the bigger issues above were already fixed.
 export const DM_LAYOUT = {
   dateOfInvoice: { xPct: 25, yPct: 9.4 } as FieldPos,
   // Only rendered when taxEnabled — the paper no longer pre-prints either of these.
-  taxInvoiceLabel: { xPct: 41, yPct: 6.9 } as FieldPos,
+  taxInvoiceLabel: { xPct: 44.5, yPct: 5.9 } as FieldPos,
   taxInvoiceNoLabel: { xPct: 52, yPct: 9.3 } as FieldPos,
   invoiceNo: { xPct: 67, yPct: 9.3 } as FieldPos,
 
@@ -79,12 +85,12 @@ export const DM_LAYOUT = {
   itemsColAmount: { xPct: 91, yPct: 0, align: "right" } as FieldPos,
 
   totalValueOfSupply: { xPct: 91, yPct: 75.5, align: "right" } as FieldPos,
-  vatPercent: { xPct: 35, yPct: 78.8 } as FieldPos, // fills the blank inside "...@   %)"
+  vatPercent: { xPct: 35, yPct: 77.8 } as FieldPos, // fills the blank inside "...@   %)"
   vatAmount: { xPct: 91, yPct: 78.8, align: "right" } as FieldPos,
   totalIncludingVat: { xPct: 91, yPct: 82.0, align: "right" } as FieldPos,
 
-  amountInWords: { xPct: 28, yPct: 85.4 } as FieldPos,
-  modeOfPayment: { xPct: 28, yPct: 88.4 } as FieldPos,
+  amountInWords: { xPct: 28, yPct: 84.4 } as FieldPos,
+  modeOfPayment: { xPct: 28, yPct: 87.4 } as FieldPos,
 
   // Bottom boundary for item rows — just above the "Total Value of Supply"
   // row's border (that row's text sits at yPct 75.5), leaving a small buffer
