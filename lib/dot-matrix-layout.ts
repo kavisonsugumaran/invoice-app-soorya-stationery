@@ -40,22 +40,31 @@ export type FieldPos = {
   align?: "left" | "right";
 };
 
+// Header-block fields (everything above the item table) got a small,
+// isolated position correction — confirmed via a real printout that the
+// item table and totals are correct with the current dmScaleX/dmScaleY/
+// offset calibration, but this block still needed to move right and up a
+// little on top of that. Since the shared calibration is now proven
+// correct elsewhere, this is a base-coordinate fix (like itemsFirstRowYPct
+// earlier), not something to chase via calibration again. "Right more"
+// fields (tax invoice no, purchaser info, place of supply) got a bigger
+// nudge than "right slightly" fields (dates, additional info).
 export const DM_LAYOUT = {
-  dateOfInvoice: { xPct: 23, yPct: 10.4 } as FieldPos,
+  dateOfInvoice: { xPct: 25, yPct: 9.4 } as FieldPos,
   // Only rendered when taxEnabled — the paper no longer pre-prints either of these.
   taxInvoiceLabel: { xPct: 41, yPct: 6.9 } as FieldPos,
-  taxInvoiceNoLabel: { xPct: 49, yPct: 10.3 } as FieldPos,
-  invoiceNo: { xPct: 63.5, yPct: 10.3 } as FieldPos,
+  taxInvoiceNoLabel: { xPct: 52, yPct: 9.3 } as FieldPos,
+  invoiceNo: { xPct: 67, yPct: 9.3 } as FieldPos,
 
-  purchaserTin: { xPct: 63.5, yPct: 13.8 } as FieldPos,
-  purchaserName: { xPct: 63.7, yPct: 15.6 } as FieldPos,
-  purchaserAddress: { xPct: 63.5, yPct: 17.5 } as FieldPos, // wraps onto purchaserAddressLine2 below if long
-  purchaserAddressLine2: { xPct: 63.5, yPct: 19.3 } as FieldPos,
-  purchaserPhone: { xPct: 63.5, yPct: 23.9 } as FieldPos,
+  purchaserTin: { xPct: 67, yPct: 12.8 } as FieldPos,
+  purchaserName: { xPct: 67.2, yPct: 14.6 } as FieldPos,
+  purchaserAddress: { xPct: 67, yPct: 16.5 } as FieldPos, // wraps onto purchaserAddressLine2 below if long
+  purchaserAddressLine2: { xPct: 67, yPct: 18.3 } as FieldPos,
+  purchaserPhone: { xPct: 67, yPct: 22.9 } as FieldPos,
 
-  dateOfDelivery: { xPct: 23, yPct: 27.3 } as FieldPos,
-  placeOfSupply: { xPct: 63.5, yPct: 27.3 } as FieldPos,
-  additionalInfo: { xPct: 29.5, yPct: 29.3 } as FieldPos,
+  dateOfDelivery: { xPct: 25, yPct: 26.3 } as FieldPos,
+  placeOfSupply: { xPct: 67, yPct: 26.3 } as FieldPos,
+  additionalInfo: { xPct: 31.5, yPct: 28.3 } as FieldPos,
 
   // Items table: row Y = itemsFirstRowYPct + (rowIndex * dmItemRowMm converted to %)
   // Was briefly dropped to 39 — measured against the reference photo, the
