@@ -62,6 +62,8 @@ type BusinessInfo = {
   dmOffsetYMm: number;
   dmFontSizePt: number;
   dmItemRowMm: number;
+  dmScaleY: number;
+  dmScaleX: number;
 } | null;
 
 export type InvoiceFormInitialData = {
@@ -643,6 +645,8 @@ export default function InvoiceForm(props: InvoiceFormProps) {
             dmOffsetYMm: business?.dmOffsetYMm ?? 0,
             dmFontSizePt: business?.dmFontSizePt ?? 10,
             dmItemRowMm: business?.dmItemRowMm ?? 6,
+            dmScaleY: business?.dmScaleY ?? 1,
+            dmScaleX: business?.dmScaleX ?? 1,
           }}
           billTo={{ name: billToName, phone: billToPhone, address: billToAddress, taxId: billToTaxId }}
           dateOfDelivery={dateOfDelivery ? new Date(dateOfDelivery) : null}

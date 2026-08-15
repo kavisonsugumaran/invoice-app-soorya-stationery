@@ -114,4 +114,16 @@ model BusinessSettings {
   dmOffsetYMm    Float @default(0)
   dmFontSizePt   Float @default(10)
   dmItemRowMm    Float @default(6)
+  // Multiplies every field's Y position (applied before dmOffsetYMm, from
+  // the top of the page) — a plain offset can't correct a printer/driver
+  // that compresses or stretches the page length proportionally (small
+  // drift near the top, growing drift near the bottom), which a fixed mm
+  // offset alone can't fix. Default 1 = no change; <1 compresses fields
+  // upward, >1 spreads them further down. Tune by print-and-compare.
+  dmScaleY       Float @default(1)
+  // Same idea as dmScaleY, applied to X position (from the left edge) —
+  // corrects a printer that pushes fields proportionally further right (or
+  // left) the further they are from the left margin, which dmOffsetXMm's
+  // flat shift can't fix on its own. Default 1 = no change.
+  dmScaleX       Float @default(1)
 }
