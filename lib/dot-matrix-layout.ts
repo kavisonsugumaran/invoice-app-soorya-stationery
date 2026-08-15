@@ -58,7 +58,11 @@ export const DM_LAYOUT = {
   additionalInfo: { xPct: 29.5, yPct: 29.3 } as FieldPos,
 
   // Items table: row Y = itemsFirstRowYPct + (rowIndex * dmItemRowMm converted to %)
-  itemsFirstRowYPct: 39,
+  // Was briefly dropped to 39 — measured against the reference photo, the
+  // item header bar spans roughly 33.5-37%, leaving almost no clearance at
+  // 39 and causing real print rows to overlap the header (confirmed on a
+  // real printout). 42 restores a safer margin below the header.
+  itemsFirstRowYPct: 42,
   itemsColRef: { xPct: 9, yPct: 0, align: "left" } as FieldPos,
   itemsColDescription: { xPct: 19, yPct: 0, align: "left" } as FieldPos,
   itemsColQty: { xPct: 65, yPct: 0, align: "right" } as FieldPos,
@@ -85,6 +89,10 @@ export type DmCalibration = {
   dmOffsetYMm: number;
   dmFontSizePt: number;
   dmItemRowMm: number;
+  /** Multiplies Y position from the top of the page, before dmOffsetYMm — corrects a printer/driver that compresses or stretches the page proportionally, which a flat offset can't. 1 = no change. */
+  dmScaleY: number;
+  /** Same as dmScaleY, applied to X position from the left edge, before dmOffsetXMm. 1 = no change. */
+  dmScaleX: number;
 };
 
 /** Returns the field position for a given item table row, based on the configured row height. */
@@ -119,8 +127,8 @@ export function resolvePosition(
   const baseLeftMm = (field.xPct / 100) * DM_PAGE_WIDTH_MM;
   const baseTopMm = (field.yPct / 100) * DM_PAGE_HEIGHT_MM;
   return {
-    leftMm: baseLeftMm + calibration.dmOffsetXMm,
-    topMm: baseTopMm + calibration.dmOffsetYMm,
+    leftMm: baseLeftMm * calibration.dmScaleX + calibration.dmOffsetXMm,
+    topMm: baseTopMm * calibration.dmScaleY + calibration.dmOffsetYMm,
     align: field.align ?? "left",
   };
 }

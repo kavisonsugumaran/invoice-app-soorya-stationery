@@ -10,12 +10,21 @@ export type DotMatrixCalibrationInput = {
   dmOffsetYMm: number;
   dmFontSizePt: number;
   dmItemRowMm: number;
+  dmScaleY: number;
+  dmScaleX: number;
 };
 
 export type UpdateCalibrationResult = { success: true } | { success: false; error: string };
 
 function validate(input: DotMatrixCalibrationInput): string | null {
-  const values = [input.dmOffsetXMm, input.dmOffsetYMm, input.dmFontSizePt, input.dmItemRowMm];
+  const values = [
+    input.dmOffsetXMm,
+    input.dmOffsetYMm,
+    input.dmFontSizePt,
+    input.dmItemRowMm,
+    input.dmScaleY,
+    input.dmScaleX,
+  ];
   if (values.some((v) => !Number.isFinite(v))) {
     return "All calibration values must be numbers.";
   }
@@ -24,6 +33,12 @@ function validate(input: DotMatrixCalibrationInput): string | null {
   }
   if (input.dmItemRowMm <= 0) {
     return "Item row height must be greater than 0.";
+  }
+  if (input.dmScaleY <= 0) {
+    return "Y scale must be greater than 0.";
+  }
+  if (input.dmScaleX <= 0) {
+    return "X scale must be greater than 0.";
   }
   return null;
 }

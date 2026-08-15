@@ -21,6 +21,8 @@ export default function DotMatrixCalibrationForm({
   const [offsetY, setOffsetY] = useState(initial.dmOffsetYMm);
   const [fontSize, setFontSize] = useState(initial.dmFontSizePt);
   const [rowHeight, setRowHeight] = useState(initial.dmItemRowMm);
+  const [scaleY, setScaleY] = useState(initial.dmScaleY);
+  const [scaleX, setScaleX] = useState(initial.dmScaleX);
   const [error, setError] = useState<string | null>(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -38,6 +40,8 @@ export default function DotMatrixCalibrationForm({
         dmOffsetYMm: offsetY,
         dmFontSizePt: fontSize,
         dmItemRowMm: rowHeight,
+        dmScaleY: scaleY,
+        dmScaleX: scaleX,
       });
 
       if (result.success) {
@@ -110,7 +114,39 @@ export default function DotMatrixCalibrationForm({
             className="rounded-md border border-border bg-transparent px-3 py-2"
           />
         </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-muted-foreground">Y Scale (1 = no change)</span>
+          <input
+            type="number"
+            step="0.01"
+            min="0.5"
+            max="2"
+            value={scaleY}
+            onChange={(e) => setScaleY(e.target.valueAsNumber || 1)}
+            className="rounded-md border border-border bg-transparent px-3 py-2"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-muted-foreground">X Scale (1 = no change)</span>
+          <input
+            type="number"
+            step="0.01"
+            min="0.5"
+            max="2"
+            value={scaleX}
+            onChange={(e) => setScaleX(e.target.valueAsNumber || 1)}
+            className="rounded-md border border-border bg-transparent px-3 py-2"
+          />
+        </label>
       </div>
+      <p className="text-xs text-muted-foreground">
+        X/Y Scale are for a different problem than Offset X/Y: if fields drift only a little near
+        the top-left of the page but a lot near the bottom-right (the printer is compressing or
+        stretching the whole page), a flat offset can&apos;t fix that. Y Scale: nudge up if content
+        is landing too high, down if too low. X Scale: nudge up if content is landing too far
+        left, down if too far right (e.g. purchaser details running off the page — nudge X Scale
+        down). Print again after each change and repeat until it lines up.
+      </p>
 
       {error && (
         <p role="alert" className="text-sm text-danger">

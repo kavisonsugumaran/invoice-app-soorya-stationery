@@ -63,6 +63,8 @@ export default async function InvoicePrintPage({
             dmOffsetYMm: business?.dmOffsetYMm ?? 0,
             dmFontSizePt: business?.dmFontSizePt ?? 10,
             dmItemRowMm: business?.dmItemRowMm ?? 6,
+            dmScaleY: business?.dmScaleY ?? 1,
+            dmScaleX: business?.dmScaleX ?? 1,
           }}
           invoiceNo={invoice.invoiceNo}
           date={invoice.date}

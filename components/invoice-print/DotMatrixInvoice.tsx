@@ -57,6 +57,19 @@ function splitTwoLines(text: string, maxLen = 32): [string, string] {
   return [text.slice(0, idx).trim(), text.slice(idx).trim()];
 }
 
+/**
+ * dmOffsetXMm/dmOffsetYMm/dmScaleX/dmScaleY exist to compensate for how the
+ * *physical printer* misplaces things — they have no relevance on screen,
+ * where the preview is compared directly against the reference background
+ * image, not a real print. Applying them there just makes the preview drift
+ * away from that reference for no reason. dmFontSizePt/dmItemRowMm are real
+ * physical measurements (not error-compensation), so those still apply
+ * everywhere.
+ */
+function screenCalibration(calibration: DmCalibration): DmCalibration {
+  return { ...calibration, dmOffsetXMm: 0, dmOffsetYMm: 0, dmScaleX: 1, dmScaleY: 1 };
+}
+
 function Field({
   pos,
   calibration,
@@ -72,35 +85,49 @@ function Field({
   /** When set, text is clipped with an ellipsis at this width instead of overflowing. Use for single-line fields with no room to wrap (e.g. item table cells, where wrapping would collide with the next row). */
   truncateWidthMm?: number;
 }) {
-  const { leftMm, topMm, align } = resolvePosition(pos, calibration);
   const wrap = maxWidthMm !== undefined;
   const truncate = truncateWidthMm !== undefined;
+
+  function renderAt(
+    resolved: { leftMm: number; topMm: number; align: "left" | "right" },
+    visibilityClassName: string
+  ) {
+    const { leftMm, topMm, align } = resolved;
+    return (
+      <div
+        className={visibilityClassName}
+        style={{
+          position: "absolute",
+          left: `${leftMm}mm`,
+          top: `${topMm}mm`,
+          fontSize: `${calibration.dmFontSizePt}pt`,
+          whiteSpace: wrap ? "normal" : "nowrap",
+          overflowWrap: wrap ? "break-word" : undefined,
+          maxWidth: wrap ? `${maxWidthMm}mm` : truncate ? `${truncateWidthMm}mm` : undefined,
+          overflow: truncate ? "hidden" : undefined,
+          textOverflow: truncate ? "ellipsis" : undefined,
+          lineHeight: wrap ? 1.3 : undefined,
+          transform: wrap
+            ? align === "right"
+              ? "translateX(-100%)"
+              : undefined
+            : align === "right"
+              ? "translate(-100%, -50%)"
+              : "translate(0, -50%)",
+          color: "#000",
+          fontFamily: "Arial, Helvetica, sans-serif",
+        }}
+      >
+        {children}
+      </div>
+    );
+  }
+
   return (
-    <div
-      style={{
-        position: "absolute",
-        left: `${leftMm}mm`,
-        top: `${topMm}mm`,
-        fontSize: `${calibration.dmFontSizePt}pt`,
-        whiteSpace: wrap ? "normal" : "nowrap",
-        overflowWrap: wrap ? "break-word" : undefined,
-        maxWidth: wrap ? `${maxWidthMm}mm` : truncate ? `${truncateWidthMm}mm` : undefined,
-        overflow: truncate ? "hidden" : undefined,
-        textOverflow: truncate ? "ellipsis" : undefined,
-        lineHeight: wrap ? 1.3 : undefined,
-        transform: wrap
-          ? align === "right"
-            ? "translateX(-100%)"
-            : undefined
-          : align === "right"
-            ? "translate(-100%, -50%)"
-            : "translate(0, -50%)",
-        color: "#000",
-        fontFamily: "Arial, Helvetica, sans-serif",
-      }}
-    >
-      {children}
-    </div>
+    <>
+      {renderAt(resolvePosition(pos, screenCalibration(calibration)), "print:hidden")}
+      {renderAt(resolvePosition(pos, calibration), "hidden print:block")}
+    </>
   );
 }
 
@@ -120,15 +147,16 @@ function TaxInvoiceBadge({
   pos: FieldPos;
   calibration: DmCalibration;
 }) {
-  const { leftMm, topMm } = resolvePosition(pos, calibration);
+  const screen = resolvePosition(pos, screenCalibration(calibration));
+  const print = resolvePosition(pos, calibration);
   return (
     <>
       <div
         className="print:hidden"
         style={{
           position: "absolute",
-          left: `${leftMm}mm`,
-          top: `${topMm}mm`,
+          left: `${screen.leftMm}mm`,
+          top: `${screen.topMm}mm`,
           transform: "translate(0, -50%)",
           backgroundColor: SHOP_BLUE,
           color: "#fff",
@@ -146,8 +174,8 @@ function TaxInvoiceBadge({
         className="hidden print:block"
         style={{
           position: "absolute",
-          left: `${leftMm}mm`,
-          top: `${topMm}mm`,
+          left: `${print.leftMm}mm`,
+          top: `${print.topMm}mm`,
           transform: "translate(0, -50%)",
           fontWeight: 700,
           fontSize: `${calibration.dmFontSizePt}pt`,
