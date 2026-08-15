@@ -32,20 +32,46 @@ function validatePrice(price: number): string | null {
 }
 
 /**
+ * Highest numeric serial already in use among P-XXXX references (0 if
+ * none). Deliberately not a row count — a count only matches the highest
+ * serial when there are no gaps, which doesn't hold once anything (like
+ * deleted products, or references reused across environments) leaves one.
+ * The exact bug this fixes already bit invoice numbering once this session
+ * (see highestExistingSerial in app/actions/invoices.ts) — a live count/max
+ * gap in production here meant every attempt to create a genuinely new
+ * product was colliding on all 5 retry attempts and throwing outright.
+ */
+async function highestExistingProductSerial(): Promise<number> {
+  const existing = await prisma.product.findMany({
+    where: { reference: { startsWith: "P-" } },
+    select: { reference: true },
+  });
+
+  let max = 0;
+  for (const { reference } of existing) {
+    const serial = Number.parseInt(reference.slice(2), 10);
+    if (Number.isFinite(serial) && serial > max) {
+      max = serial;
+    }
+  }
+  return max;
+}
+
+/**
  * Product reference numbers are always system-generated (P-0001, P-0002, ...),
  * never typed by hand — shop staff won't know them up front. Mirrors the
- * count + retry-on-unique-conflict shape used for invoiceNo generation in
- * app/actions/invoices.ts, so it's exported for reuse from there too.
+ * highestExistingSerial + retry-on-unique-conflict shape used for invoiceNo
+ * generation in app/actions/invoices.ts, so it's exported for reuse from there too.
  */
 export async function createProductWithReference(data: {
   name: string;
   price: number;
 }): Promise<{ id: string; reference: string }> {
-  const count = await prisma.product.count();
+  const baseSequence = await highestExistingProductSerial();
 
   const MAX_ATTEMPTS = 5;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const sequence = count + 1 + attempt;
+    const sequence = baseSequence + 1 + attempt;
     const reference = `P-${String(sequence).padStart(4, "0")}`;
 
     try {

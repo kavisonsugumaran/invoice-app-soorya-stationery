@@ -398,7 +398,7 @@ export default function DotMatrixInvoice({
                       {subtotal.toFixed(2)}
                     </Field>
                     <Field pos={DM_LAYOUT.vatPercent} calibration={calibration}>
-                      {taxEnabled ? taxPercent : 0}
+                      {taxEnabled ? taxPercent : 0}%
                     </Field>
                     <Field pos={DM_LAYOUT.vatAmount} calibration={calibration}>
                       {taxAmount.toFixed(2)}

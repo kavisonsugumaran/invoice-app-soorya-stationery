@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "@/tests/reset-db";
 import { getCurrentUser } from "@/lib/dal";
-import { updateProduct } from "./products";
+import { updateProduct, createProductWithReference } from "./products";
 
 vi.mock("@/lib/dal", () => ({
   getCurrentUser: vi.fn(),
@@ -117,5 +117,27 @@ describe("updateProduct", () => {
 
     const items = await prisma.invoiceItem.findMany({ where: { invoiceId: invoice.id } });
     expect(items[0]).toMatchObject({ name: "Paper", price: 100 });
+  });
+});
+
+describe("createProductWithReference", () => {
+  it("generates a correct reference even when a gap exists between the row count and the highest existing serial (regression: a count-based base collides on every retry and throws outright)", async () => {
+    // Mirrors production's real shape: 20 products (P-0001..P-0020), then
+    // the 5 lowest-numbered ones get deleted (e.g. old test/demo rows
+    // cleaned up over time) — 15 rows remain, but P-0006..P-0020 are still
+    // taken. A count-based base (15) would try 16-20, every one of which
+    // already exists — 5 straight collisions, exhausting the retry limit.
+    for (let i = 1; i <= 20; i++) {
+      await prisma.product.create({
+        data: { reference: `P-${String(i).padStart(4, "0")}`, name: `Filler ${i}`, price: 1 },
+      });
+    }
+    await prisma.product.deleteMany({
+      where: { reference: { in: ["P-0001", "P-0002", "P-0003", "P-0004", "P-0005"] } },
+    });
+
+    const result = await createProductWithReference({ name: "New Item", price: 10 });
+
+    expect(result.reference).toBe("P-0021");
   });
 });

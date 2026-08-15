@@ -85,7 +85,10 @@ export const DM_LAYOUT = {
   itemsColAmount: { xPct: 91, yPct: 0, align: "right" } as FieldPos,
 
   totalValueOfSupply: { xPct: 91, yPct: 75.5, align: "right" } as FieldPos,
-  vatPercent: { xPct: 35, yPct: 77.8 } as FieldPos, // fills the blank inside "...@   %)"
+  // Fills the blank inside "...@   )" — the paper does NOT pre-print a "%"
+  // there (confirmed on a real printout), so DotMatrixInvoice appends it
+  // to the rendered value itself.
+  vatPercent: { xPct: 35, yPct: 77.8 } as FieldPos,
   vatAmount: { xPct: 91, yPct: 78.8, align: "right" } as FieldPos,
   totalIncludingVat: { xPct: 91, yPct: 82.0, align: "right" } as FieldPos,
 
