@@ -55,6 +55,12 @@ export type FieldPos = {
 // header block, just hadn't been flagged yet. vatPercent/amountInWords/
 // modeOfPayment each needed a small upward nudge — small residual drift
 // noticed once the bigger issues above were already fixed.
+//
+// Third pass: the second pass's upward nudge on vatPercent/amountInWords/
+// modeOfPayment overshot — a further real printout showed all three now
+// sitting too high again. Moved back down (partial revert, not a full
+// undo, landing between the first and second pass values) rather than
+// guessing a bigger swing blind.
 export const DM_LAYOUT = {
   dateOfInvoice: { xPct: 25, yPct: 9.4 } as FieldPos,
   // Only rendered when taxEnabled — the paper no longer pre-prints either of these.
@@ -88,12 +94,12 @@ export const DM_LAYOUT = {
   // Fills the blank inside "...@   )" — the paper does NOT pre-print a "%"
   // there (confirmed on a real printout), so DotMatrixInvoice appends it
   // to the rendered value itself.
-  vatPercent: { xPct: 35, yPct: 77.8 } as FieldPos,
+  vatPercent: { xPct: 35, yPct: 78.4 } as FieldPos,
   vatAmount: { xPct: 91, yPct: 78.8, align: "right" } as FieldPos,
   totalIncludingVat: { xPct: 91, yPct: 82.0, align: "right" } as FieldPos,
 
-  amountInWords: { xPct: 28, yPct: 84.4 } as FieldPos,
-  modeOfPayment: { xPct: 28, yPct: 87.4 } as FieldPos,
+  amountInWords: { xPct: 28, yPct: 85.0 } as FieldPos,
+  modeOfPayment: { xPct: 28, yPct: 88.0 } as FieldPos,
 
   // Bottom boundary for item rows — just above the "Total Value of Supply"
   // row's border (that row's text sits at yPct 75.5), leaving a small buffer
