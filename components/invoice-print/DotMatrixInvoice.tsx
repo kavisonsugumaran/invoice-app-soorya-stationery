@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Printer } from "lucide-react";
 import { computeLineTotal } from "@/lib/invoice-math";
 import { amountToWords } from "@/lib/number-to-words";
@@ -57,33 +57,6 @@ function splitTwoLines(text: string, maxLen = 32): [string, string] {
   return [text.slice(0, idx).trim(), text.slice(idx).trim()];
 }
 
-// Reused across calls instead of creating a new <canvas> per measurement.
-let measureCanvas: HTMLCanvasElement | null = null;
-
-/** Width of `text` in mm when rendered at `fontSizePt`, via canvas measureText. Same mm-to-px ratio (96/25.4) used elsewhere in this file. */
-function measureTextWidthMm(text: string, fontSizePt: number): number {
-  if (typeof document === "undefined") return 0;
-  if (!measureCanvas) measureCanvas = document.createElement("canvas");
-  const ctx = measureCanvas.getContext("2d");
-  if (!ctx) return 0;
-  ctx.font = `${fontSizePt}pt Arial, Helvetica, sans-serif`;
-  const widthPx = ctx.measureText(text).width;
-  return (widthPx * 25.4) / 96;
-}
-
-/**
- * Font size (pt) so `text` fits within `maxWidthMm` at `basePt`, shrinking
- * only as much as needed — short text stays at basePt unchanged. Floored at
- * 70% of basePt so it never shrinks past legibility; text still too wide at
- * the floor relies on the caller's own truncateWidthMm as a safety net.
- */
-function fitFontSizePt(text: string, basePt: number, maxWidthMm: number): number {
-  const widthAtBase = measureTextWidthMm(text, basePt);
-  if (widthAtBase <= maxWidthMm || widthAtBase === 0) return basePt;
-  const floor = Math.max(7, basePt * 0.7);
-  return Math.max(floor, basePt * (maxWidthMm / widthAtBase));
-}
-
 /**
  * dmOffsetXMm/dmOffsetYMm/dmScaleX/dmScaleY exist to compensate for how the
  * *physical printer* misplaces things — they have no relevance on screen,
@@ -103,7 +76,6 @@ function Field({
   children,
   maxWidthMm,
   truncateWidthMm,
-  autoFitWidthMm,
 }: {
   pos: FieldPos;
   calibration: DmCalibration;
@@ -112,18 +84,9 @@ function Field({
   maxWidthMm?: number;
   /** When set, text is clipped with an ellipsis at this width instead of overflowing. Use for single-line fields with no room to wrap (e.g. item table cells, where wrapping would collide with the next row). */
   truncateWidthMm?: number;
-  /** When set, the font size shrinks (down to a floor) just enough for `children` to fit within this width — short text stays at the normal/default size. `children` must be a plain string for measurement to apply; falls back to the default size otherwise. Pair with truncateWidthMm at the same width as a safety net for text still too wide at the floor size. */
-  autoFitWidthMm?: number;
 }) {
   const wrap = maxWidthMm !== undefined;
   const truncate = truncateWidthMm !== undefined;
-
-  const fontSizePt = useMemo(() => {
-    if (autoFitWidthMm === undefined || typeof children !== "string") {
-      return calibration.dmFontSizePt;
-    }
-    return fitFontSizePt(children, calibration.dmFontSizePt, autoFitWidthMm);
-  }, [children, autoFitWidthMm, calibration.dmFontSizePt]);
 
   function renderAt(
     resolved: { leftMm: number; topMm: number; align: "left" | "right" },
@@ -137,7 +100,7 @@ function Field({
           position: "absolute",
           left: `${leftMm}mm`,
           top: `${topMm}mm`,
-          fontSize: `${fontSizePt}pt`,
+          fontSize: `${calibration.dmFontSizePt}pt`,
           whiteSpace: wrap ? "normal" : "nowrap",
           overflowWrap: wrap ? "break-word" : undefined,
           maxWidth: wrap ? `${maxWidthMm}mm` : truncate ? `${truncateWidthMm}mm` : undefined,
@@ -367,12 +330,7 @@ export default function DotMatrixInvoice({
                 <Field pos={DM_LAYOUT.purchaserTin} calibration={calibration}>
                   {billTo.taxId}
                 </Field>
-                <Field
-                  pos={DM_LAYOUT.purchaserName}
-                  calibration={calibration}
-                  autoFitWidthMm={78}
-                  truncateWidthMm={78}
-                >
+                <Field pos={DM_LAYOUT.purchaserName} calibration={calibration}>
                   {billTo.name}
                 </Field>
                 <Field pos={DM_LAYOUT.purchaserAddress} calibration={calibration}>
