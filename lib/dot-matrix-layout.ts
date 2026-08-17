@@ -82,8 +82,12 @@ export const DM_LAYOUT = {
   // Was briefly dropped to 39 — measured against the reference photo, the
   // item header bar spans roughly 33.5-37%, leaving almost no clearance at
   // 39 and causing real print rows to overlap the header (confirmed on a
-  // real printout). 42 restores a safer margin below the header.
-  itemsFirstRowYPct: 42,
+  // real printout). 42 restored a safer margin below the header, but a
+  // later real printout showed that margin as noticeably wasted blank
+  // space above the first item row. 40 trims it down while still keeping
+  // ~3% (roughly 8mm) of clearance below the header — well above the ~2%
+  // that caused the original overlap.
+  itemsFirstRowYPct: 40,
   itemsColRef: { xPct: 9, yPct: 0, align: "left" } as FieldPos,
   itemsColDescription: { xPct: 19, yPct: 0, align: "left" } as FieldPos,
   itemsColQty: { xPct: 65, yPct: 0, align: "right" } as FieldPos,
