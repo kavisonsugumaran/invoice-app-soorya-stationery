@@ -210,7 +210,31 @@ export default function DotMatrixInvoice({
 }: DotMatrixInvoiceProps) {
   const invoiceDate = date ?? new Date();
   const [addrLine1, addrLine2] = splitTwoLines(billTo.address);
+  const [nameLine1, nameLine2] = splitTwoLines(billTo.name);
+  // When the purchaser's name wraps onto a second line, the whole address
+  // block shifts down by one row to make room, rather than overlapping
+  // nameLine2. If the (now-shifted) address also needs two lines itself,
+  // it may crowd whatever sits below it (e.g. Telephone) — acceptable for
+  // this rare double-wrap case rather than cascading every field below it.
+  const purchaserRowGapPct = DM_LAYOUT.purchaserAddress.yPct - DM_LAYOUT.purchaserName.yPct;
+  const purchaserAddressPos = nameLine2
+    ? { ...DM_LAYOUT.purchaserAddress, yPct: DM_LAYOUT.purchaserAddress.yPct + purchaserRowGapPct }
+    : DM_LAYOUT.purchaserAddress;
+  const purchaserAddressLine2Pos = nameLine2
+    ? { ...DM_LAYOUT.purchaserAddressLine2, yPct: DM_LAYOUT.purchaserAddressLine2.yPct + purchaserRowGapPct }
+    : DM_LAYOUT.purchaserAddressLine2;
   const pages = paginateItems(items, calibration.dmItemRowMm);
+  // Cumulative subtotal of every page before this one — page N>0 shows this
+  // as a "Balance B/F" line ahead of its own items, and rolls it
+  // into its own page total, so the next page's balance stays consistent.
+  const balanceBroughtForward: number[] = [];
+  {
+    let running = 0;
+    for (const pageItems of pages) {
+      balanceBroughtForward.push(running);
+      running += pageItems.reduce((sum, item) => sum + computeLineTotal(item), 0);
+    }
+  }
 
   // Scales the whole preview down to fit whatever width its container
   // actually has, like a real print-preview does — the paper size itself
@@ -265,6 +289,18 @@ export default function DotMatrixInvoice({
       >
         {pages.map((pageItems, pageIndex) => {
           const isLastPage = pageIndex === pages.length - 1;
+          const balanceForward = balanceBroughtForward[pageIndex];
+          const hasBalanceForward = pageIndex > 0;
+          // Row 0 is reserved for the "Balance B/F" line on
+          // continuation pages (paginateItems already left that row empty),
+          // so this page's own items start one row lower there.
+          const itemRowOffset = hasBalanceForward ? 1 : 0;
+          // Non-last pages show only this page's own running total (balance
+          // forward + its own items), not the invoice grand subtotal —
+          // VAT/grand total/amount-in-words only make sense once every item
+          // across every page is accounted for, so those stay last-page-only.
+          const pageSubtotal =
+            balanceForward + pageItems.reduce((sum, item) => sum + computeLineTotal(item), 0);
           return (
             <div key={pageIndex} className="space-y-2">
               {pages.length > 1 && (
@@ -331,13 +367,18 @@ export default function DotMatrixInvoice({
                   {billTo.taxId}
                 </Field>
                 <Field pos={DM_LAYOUT.purchaserName} calibration={calibration}>
-                  {billTo.name}
+                  {nameLine1}
                 </Field>
-                <Field pos={DM_LAYOUT.purchaserAddress} calibration={calibration}>
+                {nameLine2 && (
+                  <Field pos={DM_LAYOUT.purchaserNameLine2} calibration={calibration}>
+                    {nameLine2}
+                  </Field>
+                )}
+                <Field pos={purchaserAddressPos} calibration={calibration}>
                   {addrLine1}
                 </Field>
                 {addrLine2 && (
-                  <Field pos={DM_LAYOUT.purchaserAddressLine2} calibration={calibration}>
+                  <Field pos={purchaserAddressLine2Pos} calibration={calibration}>
                     {addrLine2}
                   </Field>
                 )}
@@ -355,36 +396,73 @@ export default function DotMatrixInvoice({
                   {additionalInfo ?? ""}
                 </Field>
 
+                {hasBalanceForward && (
+                  <div>
+                    <Field
+                      pos={itemRowFieldPos(DM_LAYOUT.itemsColDescription, 0, calibration.dmItemRowMm)}
+                      calibration={calibration}
+                      truncateWidthMm={88}
+                    >
+                      Balance B/F
+                    </Field>
+                    <Field
+                      pos={itemRowFieldPos(DM_LAYOUT.itemsColAmount, 0, calibration.dmItemRowMm)}
+                      calibration={calibration}
+                    >
+                      {balanceForward.toFixed(2)}
+                    </Field>
+                  </div>
+                )}
                 {pageItems.map((item, index) => (
                   <div key={index}>
                     <Field
-                      pos={itemRowFieldPos(DM_LAYOUT.itemsColRef, index, calibration.dmItemRowMm)}
+                      pos={itemRowFieldPos(
+                        DM_LAYOUT.itemsColRef,
+                        index + itemRowOffset,
+                        calibration.dmItemRowMm
+                      )}
                       calibration={calibration}
                       truncateWidthMm={17}
                     >
                       {item.reference}
                     </Field>
                     <Field
-                      pos={itemRowFieldPos(DM_LAYOUT.itemsColDescription, index, calibration.dmItemRowMm)}
+                      pos={itemRowFieldPos(
+                        DM_LAYOUT.itemsColDescription,
+                        index + itemRowOffset,
+                        calibration.dmItemRowMm
+                      )}
                       calibration={calibration}
                       truncateWidthMm={88}
                     >
                       {item.name}
                     </Field>
                     <Field
-                      pos={itemRowFieldPos(DM_LAYOUT.itemsColQty, index, calibration.dmItemRowMm)}
+                      pos={itemRowFieldPos(
+                        DM_LAYOUT.itemsColQty,
+                        index + itemRowOffset,
+                        calibration.dmItemRowMm
+                      )}
                       calibration={calibration}
                     >
                       {item.quantity}
                     </Field>
                     <Field
-                      pos={itemRowFieldPos(DM_LAYOUT.itemsColUnitPrice, index, calibration.dmItemRowMm)}
+                      pos={itemRowFieldPos(
+                        DM_LAYOUT.itemsColUnitPrice,
+                        index + itemRowOffset,
+                        calibration.dmItemRowMm
+                      )}
                       calibration={calibration}
                     >
                       {item.price.toFixed(2)}
                     </Field>
                     <Field
-                      pos={itemRowFieldPos(DM_LAYOUT.itemsColAmount, index, calibration.dmItemRowMm)}
+                      pos={itemRowFieldPos(
+                        DM_LAYOUT.itemsColAmount,
+                        index + itemRowOffset,
+                        calibration.dmItemRowMm
+                      )}
                       calibration={calibration}
                     >
                       {computeLineTotal(item).toFixed(2)}
@@ -392,11 +470,11 @@ export default function DotMatrixInvoice({
                   </div>
                 ))}
 
+                <Field pos={DM_LAYOUT.totalValueOfSupply} calibration={calibration}>
+                  {(isLastPage ? subtotal : pageSubtotal).toFixed(2)}
+                </Field>
                 {isLastPage && (
                   <>
-                    <Field pos={DM_LAYOUT.totalValueOfSupply} calibration={calibration}>
-                      {subtotal.toFixed(2)}
-                    </Field>
                     <Field pos={DM_LAYOUT.vatPercent} calibration={calibration}>
                       {taxEnabled ? taxPercent : 0}%
                     </Field>
