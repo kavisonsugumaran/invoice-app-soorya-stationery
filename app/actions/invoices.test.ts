@@ -167,6 +167,85 @@ describe("createInvoice", () => {
   });
 });
 
+describe("upsertCustomer (via createInvoice)", () => {
+  it("creates separate customer records for different companies that share a phone number", async () => {
+    const user = await createTestUser("USER");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+    });
+    const sharedPhone = "0771234567";
+
+    const first = await createInvoice({
+      ...baseInvoiceInput,
+      billTo: { name: "Company A", phone: sharedPhone, address: "1 First St", taxId: "" },
+    });
+    if (!first.success) throw new Error("expected success");
+
+    const second = await createInvoice({
+      ...baseInvoiceInput,
+      billTo: { name: "Company B", phone: sharedPhone, address: "2 Second St", taxId: "" },
+    });
+    if (!second.success) throw new Error("expected success");
+
+    const invoiceA = await prisma.invoice.findUnique({
+      where: { id: first.id },
+      include: { customer: true },
+    });
+    const invoiceB = await prisma.invoice.findUnique({
+      where: { id: second.id },
+      include: { customer: true },
+    });
+
+    expect(invoiceA?.customer?.id).not.toBe(invoiceB?.customer?.id);
+    expect(invoiceA?.customer?.name).toBe("Company A");
+    expect(invoiceA?.customer?.address).toBe("1 First St");
+    expect(invoiceB?.customer?.name).toBe("Company B");
+    expect(invoiceB?.customer?.address).toBe("2 Second St");
+    expect(await prisma.customer.count()).toBe(2);
+  });
+
+  it("still reuses the same customer record for a repeat invoice from the same customer (same phone, same name)", async () => {
+    const user = await createTestUser("USER");
+    mockedGetCurrentUser.mockResolvedValue({
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+    });
+    const phone = "0771234567";
+
+    const first = await createInvoice({
+      ...baseInvoiceInput,
+      billTo: { name: "Company A", phone, address: "Old Address", taxId: "" },
+    });
+    if (!first.success) throw new Error("expected success");
+
+    const second = await createInvoice({
+      ...baseInvoiceInput,
+      billTo: { name: "Company A", phone, address: "New Address", taxId: "" },
+    });
+    if (!second.success) throw new Error("expected success");
+
+    const invoiceA = await prisma.invoice.findUnique({
+      where: { id: first.id },
+      include: { customer: true },
+    });
+    const invoiceB = await prisma.invoice.findUnique({
+      where: { id: second.id },
+      include: { customer: true },
+    });
+
+    expect(invoiceA?.customer?.id).toBe(invoiceB?.customer?.id);
+    // The same underlying record was updated in place, so both invoices'
+    // live-joined customer now shows the latest address.
+    expect(invoiceB?.customer?.address).toBe("New Address");
+    expect(await prisma.customer.count()).toBe(1);
+  });
+});
+
 // TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md).
 // Remove this whole describe block once the feature it covers is removed.
 describe("createInvoice — temporary Aug 2026 backfill support", () => {
