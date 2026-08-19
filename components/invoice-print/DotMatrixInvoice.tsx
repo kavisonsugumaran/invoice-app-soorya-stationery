@@ -50,11 +50,85 @@ export type DotMatrixInvoiceProps = {
   showBackgroundImage?: boolean;
 };
 
-function splitTwoLines(text: string, maxLen = 32): [string, string] {
-  if (text.length <= maxLen) return [text, ""];
-  const breakIdx = text.lastIndexOf(" ", maxLen);
-  const idx = breakIdx > 0 ? breakIdx : maxLen;
-  return [text.slice(0, idx).trim(), text.slice(idx).trim()];
+// Reused across calls instead of creating a new <canvas> per measurement.
+let measureCanvas: HTMLCanvasElement | null = null;
+
+/** Width of `text` in mm when rendered at `fontSizePt`, via canvas measureText. Same mm-to-px ratio (96/25.4) used elsewhere in this file. Returns null during SSR — no canvas available until the client's first paint. */
+function measureTextWidthMm(text: string, fontSizePt: number): number | null {
+  if (typeof document === "undefined") return null;
+  if (!measureCanvas) measureCanvas = document.createElement("canvas");
+  const ctx = measureCanvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.font = `${fontSizePt}pt Arial, Helvetica, sans-serif`;
+  return (ctx.measureText(text).width * 25.4) / 96;
+}
+
+/** One greedy width-fitting pass: grows `text` word by word while it fits within `maxWidthMm`, returning the fitted line and whatever's left over. */
+function fitOneLine(
+  text: string,
+  maxWidthMm: number,
+  fontSizePt: number
+): { line: string; rest: string } {
+  const words = text.split(" ");
+  let line = "";
+  let splitIndex = words.length;
+  for (let i = 0; i < words.length; i++) {
+    const candidate = line ? `${line} ${words[i]}` : words[i];
+    const candidateWidth = measureTextWidthMm(candidate, fontSizePt) ?? 0;
+    if (line && candidateWidth > maxWidthMm) {
+      splitIndex = i;
+      break;
+    }
+    line = candidate;
+    splitIndex = i + 1;
+  }
+  return { line, rest: words.slice(splitIndex).join(" ").trim() };
+}
+
+/**
+ * Splits `text` across up to `maxLines` lines so each line but the last
+ * fits within `maxWidthMm` at `fontSizePt`, breaking at the last word
+ * boundary that fits rather than a fixed character count — a character
+ * count alone under-splits wide text like an all-caps name (each character
+ * is wider than in typical mixed-case text), letting it overflow off the
+ * page instead of wrapping. The final line is never width-limited, so
+ * text still too long even after `maxLines - 1` wraps just overflows there
+ * rather than being truncated or wrapping indefinitely. Falls back to a
+ * rough character-count split during SSR (before canvas measurement is
+ * available), corrected on the client's first paint.
+ */
+function splitLines(
+  text: string,
+  maxWidthMm: number,
+  fontSizePt: number,
+  maxLines: number
+): string[] {
+  if (measureTextWidthMm(text, fontSizePt) === null) {
+    // SSR fallback — same rough character-count heuristic every line used before.
+    const maxLen = 32;
+    const lines: string[] = [];
+    let remaining = text;
+    while (remaining.length > maxLen && lines.length < maxLines - 1) {
+      const breakIdx = remaining.lastIndexOf(" ", maxLen);
+      const idx = breakIdx > 0 ? breakIdx : maxLen;
+      lines.push(remaining.slice(0, idx).trim());
+      remaining = remaining.slice(idx).trim();
+    }
+    lines.push(remaining);
+    return lines;
+  }
+
+  const lines: string[] = [];
+  let remaining = text;
+  while (lines.length < maxLines - 1) {
+    const width = measureTextWidthMm(remaining, fontSizePt) ?? 0;
+    if (width <= maxWidthMm) break;
+    const { line, rest } = fitOneLine(remaining, maxWidthMm, fontSizePt);
+    lines.push(line);
+    remaining = rest;
+  }
+  lines.push(remaining);
+  return lines;
 }
 
 /**
@@ -209,20 +283,49 @@ export default function DotMatrixInvoice({
   showBackgroundImage = true,
 }: DotMatrixInvoiceProps) {
   const invoiceDate = date ?? new Date();
-  const [addrLine1, addrLine2] = splitTwoLines(billTo.address);
-  const [nameLine1, nameLine2] = splitTwoLines(billTo.name);
-  // When the purchaser's name wraps onto a second line, the whole address
-  // block shifts down by one row to make room, rather than overlapping
-  // nameLine2. If the (now-shifted) address also needs two lines itself,
-  // it may crowd whatever sits below it (e.g. Telephone) — acceptable for
-  // this rare double-wrap case rather than cascading every field below it.
+  // Purchaser name/address share the same left position on the form, so the
+  // same safe width to the true page edge applies to both.
+  const PURCHASER_FIELD_MAX_WIDTH_MM = 78;
+  // A few mm under the true limit when deciding *where* to wrap — canvas
+  // measureText() can differ slightly from the actual DOM-rendered width
+  // (kerning/hinting), so a line measured as just barely fitting could still
+  // overflow in the real render. Wrapping a little early avoids that.
+  // truncateWidthMm={PURCHASER_FIELD_MAX_WIDTH_MM} below is the backstop for
+  // the rare case a single word alone is still too wide even after that.
+  const PURCHASER_FIELD_WRAP_WIDTH_MM = PURCHASER_FIELD_MAX_WIDTH_MM - 4;
+  const [addrLine1, addrLine2] = splitLines(
+    billTo.address,
+    PURCHASER_FIELD_WRAP_WIDTH_MM,
+    calibration.dmFontSizePt,
+    2
+  );
+  const [nameLine1, nameLine2, nameLine3] = splitLines(
+    billTo.name,
+    PURCHASER_FIELD_WRAP_WIDTH_MM,
+    calibration.dmFontSizePt,
+    3
+  );
+  // Each extra name line pushes the whole address block down by one more
+  // row to make room, rather than overlapping it.
   const purchaserRowGapPct = DM_LAYOUT.purchaserAddress.yPct - DM_LAYOUT.purchaserName.yPct;
-  const purchaserAddressPos = nameLine2
-    ? { ...DM_LAYOUT.purchaserAddress, yPct: DM_LAYOUT.purchaserAddress.yPct + purchaserRowGapPct }
+  const extraNameLines = nameLine3 ? 2 : nameLine2 ? 1 : 0;
+  const purchaserAddressPos = extraNameLines
+    ? { ...DM_LAYOUT.purchaserAddress, yPct: DM_LAYOUT.purchaserAddress.yPct + purchaserRowGapPct * extraNameLines }
     : DM_LAYOUT.purchaserAddress;
-  const purchaserAddressLine2Pos = nameLine2
-    ? { ...DM_LAYOUT.purchaserAddressLine2, yPct: DM_LAYOUT.purchaserAddressLine2.yPct + purchaserRowGapPct }
+  const purchaserAddressLine2Pos = extraNameLines
+    ? {
+        ...DM_LAYOUT.purchaserAddressLine2,
+        yPct: DM_LAYOUT.purchaserAddressLine2.yPct + purchaserRowGapPct * extraNameLines,
+      }
     : DM_LAYOUT.purchaserAddressLine2;
+  // In the rare case a long name AND a two-line address both need extra
+  // rows, the shifted address can land at or past Telephone's row and
+  // visually merge into it, making both unreadable. Rather than cascading
+  // Telephone (and everything after it) further down too, just skip
+  // printing it — the shop enters it in Additional Information instead
+  // when this happens.
+  const lastAddressLineYPct = addrLine2 ? purchaserAddressLine2Pos.yPct : purchaserAddressPos.yPct;
+  const suppressPhone = lastAddressLineYPct >= DM_LAYOUT.purchaserPhone.yPct - purchaserRowGapPct;
   const pages = paginateItems(items, calibration.dmItemRowMm);
   // Cumulative subtotal of every page before this one — page N>0 shows this
   // as a "Balance B/F" line ahead of its own items, and rolls it
@@ -366,15 +469,38 @@ export default function DotMatrixInvoice({
                 <Field pos={DM_LAYOUT.purchaserTin} calibration={calibration}>
                   {billTo.taxId}
                 </Field>
-                <Field pos={DM_LAYOUT.purchaserName} calibration={calibration}>
+                <Field
+                  pos={DM_LAYOUT.purchaserName}
+                  calibration={calibration}
+                  // Only truncate when a line after this one exists — this
+                  // line was meant to be width-fitted by splitLines, so the
+                  // truncation here is just a backstop for the rare case its
+                  // canvas-measured width was slightly optimistic. The
+                  // actual last line for this name is intentionally left
+                  // unbounded (may overflow rather than lose text).
+                  truncateWidthMm={nameLine2 ? PURCHASER_FIELD_MAX_WIDTH_MM : undefined}
+                >
                   {nameLine1}
                 </Field>
                 {nameLine2 && (
-                  <Field pos={DM_LAYOUT.purchaserNameLine2} calibration={calibration}>
+                  <Field
+                    pos={DM_LAYOUT.purchaserNameLine2}
+                    calibration={calibration}
+                    truncateWidthMm={nameLine3 ? PURCHASER_FIELD_MAX_WIDTH_MM : undefined}
+                  >
                     {nameLine2}
                   </Field>
                 )}
-                <Field pos={purchaserAddressPos} calibration={calibration}>
+                {nameLine3 && (
+                  <Field pos={DM_LAYOUT.purchaserNameLine3} calibration={calibration}>
+                    {nameLine3}
+                  </Field>
+                )}
+                <Field
+                  pos={purchaserAddressPos}
+                  calibration={calibration}
+                  truncateWidthMm={addrLine2 ? PURCHASER_FIELD_MAX_WIDTH_MM : undefined}
+                >
                   {addrLine1}
                 </Field>
                 {addrLine2 && (
@@ -382,9 +508,11 @@ export default function DotMatrixInvoice({
                     {addrLine2}
                   </Field>
                 )}
-                <Field pos={DM_LAYOUT.purchaserPhone} calibration={calibration}>
-                  {formatPhone(billTo.phone)}
-                </Field>
+                {!suppressPhone && (
+                  <Field pos={DM_LAYOUT.purchaserPhone} calibration={calibration}>
+                    {formatPhone(billTo.phone)}
+                  </Field>
+                )}
 
                 <Field pos={DM_LAYOUT.dateOfDelivery} calibration={calibration}>
                   {dateOfDelivery ? formatInvoiceDate(dateOfDelivery) : ""}
