@@ -31,7 +31,7 @@ export default async function InvoicePrintPage({
     // ancestor above the multi-page print content breaks Chromium's print
     // pagination (see the comment in DotMatrixInvoice.tsx). Centering moves
     // to mx-auto on the fixed-width children instead.
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 print:p-0">
       <div className="mx-auto flex w-full max-w-3xl items-center justify-between print:hidden">
         <Link
           href={isAdmin ? `/invoices/${invoice.id}` : "/invoices"}
@@ -55,7 +55,7 @@ export default async function InvoicePrintPage({
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-3xl">
+      <div className="mx-auto w-full max-w-3xl print:max-w-none">
         <InvoicePreviewPanel
           business={business}
           calibration={{

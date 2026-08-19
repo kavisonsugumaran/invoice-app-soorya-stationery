@@ -62,21 +62,21 @@ export type FieldPos = {
 // undo, landing between the first and second pass values) rather than
 // guessing a bigger swing blind.
 export const DM_LAYOUT = {
-  dateOfInvoice: { xPct: 25, yPct: 9.4 } as FieldPos,
+  dateOfInvoice: { xPct: 23, yPct: 10.0 } as FieldPos,
   // Only rendered when taxEnabled — the paper no longer pre-prints either of these.
-  taxInvoiceLabel: { xPct: 44.5, yPct: 5.9 } as FieldPos,
-  taxInvoiceNoLabel: { xPct: 52, yPct: 9.3 } as FieldPos,
-  invoiceNo: { xPct: 67, yPct: 9.3 } as FieldPos,
+  taxInvoiceLabel: { xPct: 43.7, yPct: 6.3 } as FieldPos,
+  taxInvoiceNoLabel: { xPct: 50, yPct: 10.0 } as FieldPos,
+  invoiceNo: { xPct: 65, yPct: 10.0 } as FieldPos,
 
-  purchaserTin: { xPct: 67, yPct: 12.8 } as FieldPos,
-  purchaserName: { xPct: 67.2, yPct: 14.6 } as FieldPos,
-  purchaserAddress: { xPct: 67, yPct: 16.5 } as FieldPos, // wraps onto purchaserAddressLine2 below if long
-  purchaserAddressLine2: { xPct: 67, yPct: 18.3 } as FieldPos,
-  purchaserPhone: { xPct: 67, yPct: 22.9 } as FieldPos,
+  purchaserTin: { xPct: 65, yPct: 13.5 } as FieldPos,
+  purchaserName: { xPct: 65, yPct: 15.5 } as FieldPos,
+  purchaserAddress: { xPct: 65, yPct: 17.5 } as FieldPos, // wraps onto purchaserAddressLine2 below if long
+  purchaserAddressLine2: { xPct: 65, yPct: 19.5 } as FieldPos,
+  purchaserPhone: { xPct: 65, yPct: 23.6 } as FieldPos,
 
-  dateOfDelivery: { xPct: 25, yPct: 26.3 } as FieldPos,
-  placeOfSupply: { xPct: 67, yPct: 26.3 } as FieldPos,
-  additionalInfo: { xPct: 31.5, yPct: 28.3 } as FieldPos,
+  dateOfDelivery: { xPct: 25, yPct: 27.0 } as FieldPos,
+  placeOfSupply: { xPct: 65, yPct: 27.0 } as FieldPos,
+  additionalInfo: { xPct: 31.5, yPct: 29.4 } as FieldPos,
 
   // Items table: row Y = itemsFirstRowYPct + (rowIndex * dmItemRowMm converted to %)
   // Was briefly dropped to 39 — measured against the reference photo, the
@@ -87,20 +87,20 @@ export const DM_LAYOUT = {
   // space above the first item row. 40 trims it down while still keeping
   // ~3% (roughly 8mm) of clearance below the header — well above the ~2%
   // that caused the original overlap.
-  itemsFirstRowYPct: 40,
+  itemsFirstRowYPct: 37.8,
   itemsColRef: { xPct: 9, yPct: 0, align: "left" } as FieldPos,
   itemsColDescription: { xPct: 19, yPct: 0, align: "left" } as FieldPos,
   itemsColQty: { xPct: 65, yPct: 0, align: "right" } as FieldPos,
   itemsColUnitPrice: { xPct: 75, yPct: 0, align: "right" } as FieldPos,
   itemsColAmount: { xPct: 91, yPct: 0, align: "right" } as FieldPos,
 
-  totalValueOfSupply: { xPct: 91, yPct: 75.5, align: "right" } as FieldPos,
+  totalValueOfSupply: { xPct: 91, yPct: 74.8, align: "right" } as FieldPos,
   // Fills the blank inside "...@   )" — the paper does NOT pre-print a "%"
   // there (confirmed on a real printout), so DotMatrixInvoice appends it
   // to the rendered value itself.
-  vatPercent: { xPct: 35, yPct: 78.4 } as FieldPos,
-  vatAmount: { xPct: 91, yPct: 78.8, align: "right" } as FieldPos,
-  totalIncludingVat: { xPct: 91, yPct: 82.0, align: "right" } as FieldPos,
+  vatPercent: { xPct: 34.2, yPct: 78.2 } as FieldPos,
+  vatAmount: { xPct: 91, yPct: 78.2, align: "right" } as FieldPos,
+  totalIncludingVat: { xPct: 91, yPct: 81.4, align: "right" } as FieldPos,
 
   amountInWords: { xPct: 28, yPct: 85.0 } as FieldPos,
   modeOfPayment: { xPct: 28, yPct: 88.0 } as FieldPos,
