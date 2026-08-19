@@ -208,7 +208,19 @@ async function upsertCustomer(billTo: BillToInput) {
   }
 
   if (phone) {
-    const existing = await prisma.customer.findFirst({ where: { phone } });
+    // Matching on phone alone would merge unrelated customers that happen to
+    // share a phone number (e.g. multiple companies routed through one
+    // office line) into a single record, silently overwriting whichever one
+    // saved an invoice most recently — and since the print page reads
+    // customer data live rather than from a snapshot, that corruption shows
+    // up on that customer's already-issued invoices too. Requiring the name
+    // to also match (case-insensitive, same convention as
+    // findProductByExactName) keeps the auto-update convenience for repeat
+    // invoices from the same customer while treating same-phone-different-name
+    // as a distinct customer instead.
+    const existing = await prisma.customer.findFirst({
+      where: { phone, name: { equals: name, mode: "insensitive" } },
+    });
     if (existing) {
       const needsUpdate =
         name !== existing.name ||

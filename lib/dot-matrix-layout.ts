@@ -70,6 +70,10 @@ export const DM_LAYOUT = {
 
   purchaserTin: { xPct: 65, yPct: 13.5 } as FieldPos,
   purchaserName: { xPct: 65, yPct: 15.5 } as FieldPos,
+  // Only used when the purchaser's name wraps onto a second line — sits at
+  // the same position purchaserAddress normally occupies, since the address
+  // block shifts down by one row in that case to make room.
+  purchaserNameLine2: { xPct: 65, yPct: 17.5 } as FieldPos,
   purchaserAddress: { xPct: 65, yPct: 17.5 } as FieldPos, // wraps onto purchaserAddressLine2 below if long
   purchaserAddressLine2: { xPct: 65, yPct: 19.5 } as FieldPos,
   purchaserPhone: { xPct: 65, yPct: 23.6 } as FieldPos,
@@ -136,13 +140,23 @@ export function maxItemsPerPage(itemRowMm: number): number {
   return Math.max(1, Math.floor(availablePct / rowPct) + 1);
 }
 
-/** Splits items into pages of at most maxItemsPerPage(itemRowMm), always returning at least one (possibly empty) page. */
+/**
+ * Splits items into pages of at most maxItemsPerPage(itemRowMm), always
+ * returning at least one (possibly empty) page. Continuation pages (every
+ * page after the first) hold one fewer real item than the first page,
+ * reserving that row for the "Balance B/F" line DotMatrixInvoice
+ * renders ahead of a continuation page's own items.
+ */
 export function paginateItems<T>(items: T[], itemRowMm: number): T[][] {
   const perPage = maxItemsPerPage(itemRowMm);
+  const perContinuationPage = Math.max(1, perPage - 1);
   if (items.length === 0) return [[]];
   const pages: T[][] = [];
-  for (let i = 0; i < items.length; i += perPage) {
-    pages.push(items.slice(i, i + perPage));
+  let i = 0;
+  while (i < items.length) {
+    const size = pages.length === 0 ? perPage : perContinuationPage;
+    pages.push(items.slice(i, i + size));
+    i += size;
   }
   return pages;
 }
