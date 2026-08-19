@@ -70,10 +70,12 @@ export const DM_LAYOUT = {
 
   purchaserTin: { xPct: 65, yPct: 13.5 } as FieldPos,
   purchaserName: { xPct: 65, yPct: 15.5 } as FieldPos,
-  // Only used when the purchaser's name wraps onto a second line — sits at
-  // the same position purchaserAddress normally occupies, since the address
-  // block shifts down by one row in that case to make room.
+  // Only used when the purchaser's name wraps onto a second/third line —
+  // these sit at the same positions purchaserAddress/purchaserAddressLine2
+  // normally occupy, since the address block shifts down a row per extra
+  // name line in that case to make room.
   purchaserNameLine2: { xPct: 65, yPct: 17.5 } as FieldPos,
+  purchaserNameLine3: { xPct: 65, yPct: 19.5 } as FieldPos,
   purchaserAddress: { xPct: 65, yPct: 17.5 } as FieldPos, // wraps onto purchaserAddressLine2 below if long
   purchaserAddressLine2: { xPct: 65, yPct: 19.5 } as FieldPos,
   purchaserPhone: { xPct: 65, yPct: 23.6 } as FieldPos,
