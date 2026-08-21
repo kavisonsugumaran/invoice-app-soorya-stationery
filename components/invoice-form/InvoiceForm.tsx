@@ -134,7 +134,7 @@ export default function InvoiceForm(props: InvoiceFormProps) {
   const [modeOfPayment, setModeOfPayment] = useState(initial?.modeOfPayment ?? "");
   const [additionalInfo, setAdditionalInfo] = useState(initial?.additionalInfo ?? "");
   const [taxEnabled, setTaxEnabled] = useState(initial?.taxEnabled ?? false);
-  const [taxPercent, setTaxPercent] = useState(initial?.taxPercent ?? 0);
+  const [taxPercent, setTaxPercent] = useState(initial?.taxPercent ?? 18);
   // TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md).
   // Create-mode only; remove this state and its UI once the backfill is done.
   const [isOldInvoice, setIsOldInvoice] = useState(false);
