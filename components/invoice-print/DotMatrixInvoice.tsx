@@ -603,12 +603,16 @@ export default function DotMatrixInvoice({
                 </Field>
                 {isLastPage && (
                   <>
-                    <Field pos={DM_LAYOUT.vatPercent} calibration={calibration}>
-                      {taxEnabled ? taxPercent : 0}%
-                    </Field>
-                    <Field pos={DM_LAYOUT.vatAmount} calibration={calibration}>
-                      {taxAmount.toFixed(2)}
-                    </Field>
+                    {taxEnabled && (
+                      <>
+                        <Field pos={DM_LAYOUT.vatPercent} calibration={calibration}>
+                          {taxPercent}%
+                        </Field>
+                        <Field pos={DM_LAYOUT.vatAmount} calibration={calibration}>
+                          {taxAmount.toFixed(2)}
+                        </Field>
+                      </>
+                    )}
                     <Field pos={DM_LAYOUT.totalIncludingVat} calibration={calibration}>
                       {total.toFixed(2)}
                     </Field>
