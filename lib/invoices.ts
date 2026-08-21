@@ -63,7 +63,16 @@ export async function getAllInvoices(page = 1, query?: string) {
   const [invoices, totalCount] = await Promise.all([
     prisma.invoice.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      // Most recent invoice date first (so August invoices group above July,
+      // above June, ...), then invoiceNo descending as a same-date tiebreak
+      // so a higher serial within that date shows above a lower one.
+      // Deliberately not createdAt: the Aug 2026 backfill feature lets
+      // invoices representing older, previously-handwritten paper invoices
+      // get entered into the system today with an old date/serial — sorting
+      // by createdAt would put those at the top just because they were
+      // typed in most recently, not because they're actually the newest
+      // invoices.
+      orderBy: [{ date: "desc" }, { invoiceNo: "desc" }],
       select: invoiceListSelect,
       skip: (currentPage - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
