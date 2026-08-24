@@ -3,11 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "@/tests/reset-db";
 import { getAllInvoices } from "./invoices";
 
-async function createTestInvoice(invoiceNo: string, date: Date) {
+async function createTestInvoice(invoiceNo: string, date: Date, taxEnabled = false) {
   return prisma.invoice.create({
     data: {
       invoiceNo,
       date,
+      taxEnabled,
       subtotal: 100,
       taxAmount: 0,
       total: 100,
@@ -87,5 +88,19 @@ describe("getAllInvoices", () => {
       "INV-20260215-01",
       "INV-20260101-01",
     ]);
+  });
+
+  it("filters by taxFolder", async () => {
+    await createTestInvoice("26AUG_SST_0001", new Date("2026-08-01"), true);
+    await createTestInvoice("26AUG_SST_0002", new Date("2026-08-02"), false);
+    await createTestInvoice("26AUG_SST_0003", new Date("2026-08-03"), true);
+
+    const vatOnly = await getAllInvoices(1, undefined, "vat");
+    const noVatOnly = await getAllInvoices(1, undefined, "no-vat");
+    const all = await getAllInvoices(1, undefined, "all");
+
+    expect(vatOnly.invoices.map((i) => i.invoiceNo)).toEqual(["26AUG_SST_0003", "26AUG_SST_0001"]);
+    expect(noVatOnly.invoices.map((i) => i.invoiceNo)).toEqual(["26AUG_SST_0002"]);
+    expect(all.totalCount).toBe(3);
   });
 });

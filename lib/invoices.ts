@@ -102,18 +102,28 @@ export function getInvoiceById(id: string) {
 
 const PAGE_SIZE = 20;
 
-export async function getAllInvoices(page = 1, query?: string) {
+export type InvoiceTaxFolder = "all" | "vat" | "no-vat";
+
+export async function getAllInvoices(
+  page = 1,
+  query?: string,
+  taxFolder: InvoiceTaxFolder = "all"
+) {
   const currentPage = Math.max(1, page);
   const trimmedQuery = query?.trim();
 
-  const where: Prisma.InvoiceWhereInput | undefined = trimmedQuery
-    ? {
-        OR: [
-          { invoiceNo: { contains: trimmedQuery, mode: "insensitive" } },
-          { customer: { name: { contains: trimmedQuery, mode: "insensitive" } } },
-        ],
-      }
-    : undefined;
+  const where: Prisma.InvoiceWhereInput = {
+    ...(trimmedQuery
+      ? {
+          OR: [
+            { invoiceNo: { contains: trimmedQuery, mode: "insensitive" } },
+            { customer: { name: { contains: trimmedQuery, mode: "insensitive" } } },
+          ],
+        }
+      : {}),
+    ...(taxFolder === "vat" ? { taxEnabled: true } : {}),
+    ...(taxFolder === "no-vat" ? { taxEnabled: false } : {}),
+  };
 
   // Sorting by invoiceNo's own encoded year/month/serial (see
   // invoiceNoSortKey) can't be expressed as a Prisma/SQL orderBy, so this

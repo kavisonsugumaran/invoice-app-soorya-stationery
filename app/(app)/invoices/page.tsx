@@ -1,19 +1,44 @@
 import Link from "next/link";
 import { Plus, X } from "lucide-react";
 import RecentInvoicesTable from "@/components/dashboard/RecentInvoicesTable";
-import { getAllInvoices } from "@/lib/invoices";
+import { getAllInvoices, type InvoiceTaxFolder } from "@/lib/invoices";
+
+const TAX_FOLDERS: { value: InvoiceTaxFolder; label: string }[] = [
+  { value: "all", label: "All Invoices" },
+  { value: "vat", label: "VAT Bills" },
+  { value: "no-vat", label: "No VAT Bills" },
+];
 
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; folder?: string }>;
 }) {
-  const { page, q } = await searchParams;
+  const { page, q, folder } = await searchParams;
   const requestedPage = Number(page) || 1;
-  const { invoices, pageCount, currentPage } = await getAllInvoices(requestedPage, q);
+  const taxFolder: InvoiceTaxFolder = TAX_FOLDERS.some((f) => f.value === folder)
+    ? (folder as InvoiceTaxFolder)
+    : "all";
+  const { invoices, pageCount, currentPage } = await getAllInvoices(
+    requestedPage,
+    q,
+    taxFolder
+  );
 
-  const pageHref = (targetPage: number) =>
-    `/invoices?page=${targetPage}${q ? `&q=${encodeURIComponent(q)}` : ""}`;
+  const pageHref = (targetPage: number) => {
+    const params = new URLSearchParams();
+    params.set("page", String(targetPage));
+    if (q) params.set("q", q);
+    if (taxFolder !== "all") params.set("folder", taxFolder);
+    return `/invoices?${params.toString()}`;
+  };
+  const folderHref = (value: InvoiceTaxFolder) => {
+    const params = new URLSearchParams();
+    if (value !== "all") params.set("folder", value);
+    if (q) params.set("q", q);
+    const qs = params.toString();
+    return qs ? `/invoices?${qs}` : "/invoices";
+  };
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -41,11 +66,37 @@ export default async function InvoicesPage({
         </Link>
       </div>
 
+      <div className="flex gap-1 print:hidden">
+        {TAX_FOLDERS.map((f) => (
+          <Link
+            key={f.value}
+            href={folderHref(f.value)}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+              taxFolder === f.value
+                ? "bg-primary text-primary-foreground"
+                : "border border-border text-muted-foreground hover:bg-surface-muted"
+            }`}
+          >
+            {f.label}
+          </Link>
+        ))}
+      </div>
+
       <RecentInvoicesTable
-        title={q ? "Matching Invoices" : "All Invoices"}
+        title={
+          q
+            ? "Matching Invoices"
+            : (TAX_FOLDERS.find((f) => f.value === taxFolder)?.label ?? "All Invoices")
+        }
         invoices={invoices}
         emptyMessage={
-          q ? "No invoices match your search." : "No invoices yet. Create your first invoice to see it here."
+          q
+            ? "No invoices match your search."
+            : taxFolder === "vat"
+              ? "No VAT invoices yet."
+              : taxFolder === "no-vat"
+                ? "No non-VAT invoices yet."
+                : "No invoices yet. Create your first invoice to see it here."
         }
       />
 
