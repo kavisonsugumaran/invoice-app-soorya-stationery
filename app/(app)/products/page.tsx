@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import ProductsTable from "@/components/products/ProductsTable";
 import ListFilterBar from "@/components/ui/ListFilterBar";
+import Pagination from "@/components/ui/Pagination";
 import { getAllProducts, DEFAULT_PRODUCT_SORT } from "@/lib/products";
 
 const SORT_OPTIONS = [
@@ -65,37 +66,7 @@ export default async function ProductsPage({
         }
       />
 
-      {pageCount > 1 && (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>
-            Page {currentPage} of {pageCount}
-          </span>
-          <div className="flex gap-2">
-            <Link
-              href={pageHref(currentPage - 1)}
-              aria-disabled={currentPage <= 1}
-              className={`rounded-md border border-border px-3 py-1.5 font-medium ${
-                currentPage <= 1
-                  ? "pointer-events-none opacity-40"
-                  : "hover:bg-surface-muted"
-              }`}
-            >
-              Previous
-            </Link>
-            <Link
-              href={pageHref(currentPage + 1)}
-              aria-disabled={currentPage >= pageCount}
-              className={`rounded-md border border-border px-3 py-1.5 font-medium ${
-                currentPage >= pageCount
-                  ? "pointer-events-none opacity-40"
-                  : "hover:bg-surface-muted"
-              }`}
-            >
-              Next
-            </Link>
-          </div>
-        </div>
-      )}
+      <Pagination currentPage={currentPage} pageCount={pageCount} hrefForPage={pageHref} />
     </div>
   );
 }

@@ -11,6 +11,8 @@ type RecentInvoicesTableProps = {
   viewAllHref?: string;
   emptyMessage?: string;
   hideCustomerColumn?: boolean;
+  /** Base path each row links to (e.g. "/small-bills" for the small-bills list). Defaults to "/invoices". */
+  hrefBase?: string;
 };
 
 export default function RecentInvoicesTable({
@@ -19,6 +21,7 @@ export default function RecentInvoicesTable({
   viewAllHref,
   emptyMessage = "No invoices yet.",
   hideCustomerColumn = false,
+  hrefBase = "/invoices",
 }: RecentInvoicesTableProps) {
   return (
     <div className="rounded-lg border border-border bg-surface shadow-sm">
@@ -51,7 +54,7 @@ export default function RecentInvoicesTable({
             {invoices.map((invoice) => (
               <tr key={invoice.id} className="border-b border-border/60 last:border-0">
                 <td className="px-4 py-2.5 font-medium">
-                  <Link href={`/invoices/${invoice.id}`} className="text-foreground hover:text-primary hover:underline">
+                  <Link href={`${hrefBase}/${invoice.id}`} className="text-foreground hover:text-primary hover:underline">
                     {invoice.invoiceNo}
                   </Link>
                 </td>

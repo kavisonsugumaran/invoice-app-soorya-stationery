@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import CustomersTable from "@/components/customers/CustomersTable";
 import ListFilterBar from "@/components/ui/ListFilterBar";
+import Pagination from "@/components/ui/Pagination";
 import { getAllCustomers, DEFAULT_CUSTOMER_SORT } from "@/lib/customers";
 
 const SORT_OPTIONS = [
@@ -63,37 +64,7 @@ export default async function CustomersPage({
         }
       />
 
-      {pageCount > 1 && (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>
-            Page {currentPage} of {pageCount}
-          </span>
-          <div className="flex gap-2">
-            <Link
-              href={pageHref(currentPage - 1)}
-              aria-disabled={currentPage <= 1}
-              className={`rounded-md border border-border px-3 py-1.5 font-medium ${
-                currentPage <= 1
-                  ? "pointer-events-none opacity-40"
-                  : "hover:bg-surface-muted"
-              }`}
-            >
-              Previous
-            </Link>
-            <Link
-              href={pageHref(currentPage + 1)}
-              aria-disabled={currentPage >= pageCount}
-              className={`rounded-md border border-border px-3 py-1.5 font-medium ${
-                currentPage >= pageCount
-                  ? "pointer-events-none opacity-40"
-                  : "hover:bg-surface-muted"
-              }`}
-            >
-              Next
-            </Link>
-          </div>
-        </div>
-      )}
+      <Pagination currentPage={currentPage} pageCount={pageCount} hrefForPage={pageHref} />
     </div>
   );
 }
