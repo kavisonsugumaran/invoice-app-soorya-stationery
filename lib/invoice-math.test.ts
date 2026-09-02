@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { round2, computeLineTotal, computeInvoiceTotals } from "./invoice-math";
+import { round2, computeLineTotal, computeInvoiceTotals, splitRupeesCents } from "./invoice-math";
 
 describe("round2", () => {
   it("rounds to 2 decimal places", () => {
@@ -47,5 +47,38 @@ describe("computeInvoiceTotals", () => {
     expect(subtotal).toBe(0);
     expect(taxAmount).toBe(0);
     expect(total).toBe(0);
+  });
+});
+
+describe("splitRupeesCents", () => {
+  it("splits a whole-rupee amount with '00' cents", () => {
+    expect(splitRupeesCents(150)).toEqual({ rupees: 150, cents: "00" });
+  });
+
+  it("splits a sub-1-rupee amount to 0 rupees and the correct cents", () => {
+    expect(splitRupeesCents(0.5)).toEqual({ rupees: 0, cents: "50" });
+  });
+
+  it("pads single-digit cents to two digits", () => {
+    expect(splitRupeesCents(10.05)).toEqual({ rupees: 10, cents: "05" });
+  });
+
+  it("does not leak floating-point remainder artifacts into the cents string", () => {
+    // 10.10 - 10 in raw JS float math is 0.09999999999999964, not 0.10 —
+    // this must still come out as "10", not "09" or "0999...".
+    expect(splitRupeesCents(10.1)).toEqual({ rupees: 10, cents: "10" });
+  });
+
+  it("rounds the same way round2 does before splitting", () => {
+    // round2(10.005) is 10.01 (see the round2 test above), so this must
+    // split as 10 rupees, 1 cent — not 10.005 truncated straight to "00".
+    expect(splitRupeesCents(10.005)).toEqual({ rupees: 10, cents: "01" });
+  });
+
+  it("treats a negative amount the same as its positive magnitude", () => {
+    // Amounts are never negative in this codebase (validated positive at
+    // input) — Math.abs is a defensive no-op, verified here rather than
+    // left unverified.
+    expect(splitRupeesCents(-10.5)).toEqual({ rupees: 10, cents: "50" });
   });
 });

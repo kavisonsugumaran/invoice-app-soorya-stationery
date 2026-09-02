@@ -1,5 +1,20 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type InvoiceStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+
+/**
+ * `date` range filter shared by getAllInvoices/getAllSmallBills — `dateTo`
+ * is inclusive of the whole day. Both bounds are built with an explicit "Z"
+ * so they parse as UTC, matching how a plain "YYYY-MM-DD" string already
+ * parses as UTC midnight per the date-string spec — without the "Z" on the
+ * end-of-day bound, it would parse in the server's local timezone instead,
+ * silently shifting the boundary by that offset.
+ */
+function dateRangeFilter(dateFrom?: string, dateTo?: string): Prisma.DateTimeFilter | undefined {
+  const filter: Prisma.DateTimeFilter = {};
+  if (dateFrom) filter.gte = new Date(dateFrom);
+  if (dateTo) filter.lte = new Date(`${dateTo}T23:59:59.999Z`);
+  return Object.keys(filter).length > 0 ? filter : undefined;
+}
 
 const invoiceListSelect = {
   id: true,
@@ -107,12 +122,21 @@ export type InvoiceTaxFolder = "all" | "vat" | "no-vat";
 export async function getAllInvoices(
   page = 1,
   query?: string,
-  taxFolder: InvoiceTaxFolder = "all"
+  taxFolder: InvoiceTaxFolder = "all",
+  status?: InvoiceStatus,
+  dateFrom?: string,
+  dateTo?: string
 ) {
   const currentPage = Math.max(1, page);
   const trimmedQuery = query?.trim();
+  const dateFilter = dateRangeFilter(dateFrom, dateTo);
 
   const where: Prisma.InvoiceWhereInput = {
+    // Small bills (billType: "SMALL") live on the same Invoice model but
+    // have their own list page (getAllSmallBills below) — excluded here
+    // unconditionally so this page and its VAT/no-VAT folders are never
+    // affected by small bills existing.
+    billType: "COMMERCIAL",
     ...(trimmedQuery
       ? {
           OR: [
@@ -123,6 +147,8 @@ export async function getAllInvoices(
       : {}),
     ...(taxFolder === "vat" ? { taxEnabled: true } : {}),
     ...(taxFolder === "no-vat" ? { taxEnabled: false } : {}),
+    ...(status ? { status } : {}),
+    ...(dateFilter ? { date: dateFilter } : {}),
   };
 
   // Sorting by invoiceNo's own encoded year/month/serial (see
@@ -136,6 +162,55 @@ export async function getAllInvoices(
   ]);
 
   allMatching.sort((a, b) => invoiceNoSortKey(b.invoiceNo) - invoiceNoSortKey(a.invoiceNo));
+  const invoices = allMatching.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  return {
+    invoices,
+    totalCount,
+    pageCount: Math.max(1, Math.ceil(totalCount / PAGE_SIZE)),
+    currentPage,
+  };
+}
+
+/**
+ * Small bills (billType: "SMALL") — no tax-folder param since they're never
+ * VAT. Sorted by the invoiceNo's own numeric suffix (E001, E002, ...); no
+ * year/month decoding needed like invoiceNoSortKey, since this format has
+ * no embedded date component to get wrong.
+ */
+export async function getAllSmallBills(
+  page = 1,
+  query?: string,
+  status?: InvoiceStatus,
+  dateFrom?: string,
+  dateTo?: string
+) {
+  const currentPage = Math.max(1, page);
+  const trimmedQuery = query?.trim();
+  const dateFilter = dateRangeFilter(dateFrom, dateTo);
+
+  const where: Prisma.InvoiceWhereInput = {
+    billType: "SMALL",
+    ...(trimmedQuery
+      ? {
+          OR: [
+            { invoiceNo: { contains: trimmedQuery, mode: "insensitive" } },
+            { customer: { name: { contains: trimmedQuery, mode: "insensitive" } } },
+          ],
+        }
+      : {}),
+    ...(status ? { status } : {}),
+    ...(dateFilter ? { date: dateFilter } : {}),
+  };
+
+  const [allMatching, totalCount] = await Promise.all([
+    prisma.invoice.findMany({ where, select: invoiceListSelect }),
+    prisma.invoice.count({ where }),
+  ]);
+
+  allMatching.sort(
+    (a, b) => Number.parseInt(b.invoiceNo.slice(1), 10) - Number.parseInt(a.invoiceNo.slice(1), 10)
+  );
   const invoices = allMatching.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   return {

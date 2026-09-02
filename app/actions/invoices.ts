@@ -107,6 +107,41 @@ async function highestExistingSerial(prefix: string): Promise<number> {
   return max;
 }
 
+// Small bills (blank 5.5in x 5.5in stock on the Jollymark printer, not the
+// commercial dot-matrix VAT tax invoice) get their own, much simpler
+// numbering: a single ever-increasing sequence (E001, E002, ...), no
+// monthly reset, no unit code — matching how the client's old pre-printed
+// pad's own "No. C ___" serial worked. Independent of the Gazette prefix
+// above even though both live in the same invoiceNo column.
+const SMALL_BILL_PREFIX = "E";
+const SMALL_BILL_SERIAL_DIGITS = 3; // E001..E999, then E1000, E1001, ... — padStart handles the overflow with no special-casing
+
+/**
+ * The highest numeric serial already in use among SMALL invoiceNo values (0
+ * if none exist). Scoped by billType: "SMALL" (not just the "E" prefix
+ * string) so a manually-typed commercial invoiceNo that happens to start
+ * with "E" can never be mistaken for a small-bill serial.
+ */
+async function highestExistingSmallBillSerial(): Promise<number> {
+  const existing = await prisma.invoice.findMany({
+    where: { billType: "SMALL", invoiceNo: { startsWith: SMALL_BILL_PREFIX } },
+    select: { invoiceNo: true },
+  });
+
+  let max = 0;
+  for (const { invoiceNo } of existing) {
+    const serial = Number.parseInt(invoiceNo.slice(SMALL_BILL_PREFIX.length), 10);
+    if (Number.isFinite(serial) && serial > max) {
+      max = serial;
+    }
+  }
+  return max;
+}
+
+function formatSmallBillNo(sequence: number): string {
+  return `${SMALL_BILL_PREFIX}${String(sequence).padStart(SMALL_BILL_SERIAL_DIGITS, "0")}`;
+}
+
 function validate(input: CreateInvoiceInput): string | null {
   // Purchaser details are only mandatory for VAT tax invoices (compliance
   // requirement) — a plain non-VAT sale can be recorded without them.
@@ -398,6 +433,130 @@ export async function createInvoice(
   }
 
   return { success: false, error: "Could not generate a unique invoice number. Please try again." };
+}
+
+export type SmallBillItemInput = { name: string; price: number; quantity: number };
+
+export type CreateSmallBillInput = {
+  items: SmallBillItemInput[];
+  /** "M/s. ___" on the printed bill — optional, same as a non-VAT commercial invoice's billTo.name. */
+  billToName: string;
+  phone: string;
+  address: string;
+  taxId: string;
+  /** Set when the customer was picked from the autocomplete — see upsertCustomer(). */
+  customerId?: string;
+  /** Small-bill issuance date. Defaults to now if omitted. */
+  date?: string;
+  /** Cash -> "PAID" immediately; Credit (the default) -> "UNPAID". */
+  status?: Extract<InvoiceStatus, "PAID" | "UNPAID">;
+};
+
+export type CreateSmallBillResult =
+  | { success: true; id: string; invoiceNo: string }
+  | { success: false; error: string };
+
+function validateSmallBill(input: CreateSmallBillInput): string | null {
+  if (!Array.isArray(input.items) || input.items.length === 0) {
+    return "At least one item is required.";
+  }
+
+  for (const item of input.items) {
+    if (!item.name || !item.name.trim()) {
+      return "Every item must have a name.";
+    }
+    if (item.name.length > 80) {
+      return `Item name "${item.name.slice(0, 20)}..." must be 80 characters or fewer.`;
+    }
+    if (!Number.isFinite(item.price) || item.price <= 0) {
+      return `Price for "${item.name}" must be a positive number.`;
+    }
+    if (item.price > 1_000_000) {
+      return `Price for "${item.name}" must be 1,000,000 or less.`;
+    }
+    if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+      return `Quantity for "${item.name}" must be a positive number.`;
+    }
+    if (item.quantity > 999_999) {
+      return `Quantity for "${item.name}" must be 999,999 or less.`;
+    }
+  }
+
+  if (input.date && Number.isNaN(Date.parse(input.date))) {
+    return "Date is invalid.";
+  }
+
+  return null;
+}
+
+/**
+ * Small bills (blank paper, Jollymark printer, no VAT) reuse the Invoice
+ * model via billType: "SMALL" instead of a separate schema — see the
+ * small-bill feature plan. Reuses upsertCustomer/resolveInvoiceItems
+ * unchanged; the only genuinely new logic here is the E-prefixed numbering
+ * (highestExistingSmallBillSerial/formatSmallBillNo above) and the leaner
+ * validation (no TIN/VAT/backfill concerns apply to a small bill).
+ */
+export async function createSmallBill(
+  input: CreateSmallBillInput
+): Promise<CreateSmallBillResult> {
+  const auth = await requireUser();
+  if (!auth.ok) return { success: false, error: auth.error };
+
+  const validationError = validateSmallBill(input);
+  if (validationError) {
+    return { success: false, error: validationError };
+  }
+
+  const { subtotal, taxAmount, total } = computeInvoiceTotals(input.items, false, 0);
+
+  const customer = await upsertCustomer({
+    name: input.billToName,
+    phone: input.phone,
+    address: input.address,
+    taxId: input.taxId,
+    customerId: input.customerId,
+  });
+  const resolvedItems = await resolveInvoiceItems(
+    input.items.map((item) => ({ ...item, reference: "" }))
+  );
+
+  const maxSerial = await highestExistingSmallBillSerial();
+
+  const MAX_ATTEMPTS = 5;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const sequence = maxSerial + 1 + attempt;
+    const invoiceNo = formatSmallBillNo(sequence);
+
+    try {
+      const invoice = await prisma.invoice.create({
+        data: {
+          invoiceNo,
+          billType: "SMALL",
+          status: input.status ?? "UNPAID",
+          customerId: customer?.id ?? null,
+          createdByUserId: auth.user.id,
+          date: input.date ? new Date(input.date) : new Date(),
+          taxEnabled: false,
+          taxPercent: 0,
+          subtotal,
+          taxAmount,
+          total,
+          items: { create: resolvedItems },
+        },
+      });
+      return { success: true, id: invoice.id, invoiceNo };
+    } catch (error) {
+      const isUniqueConflict =
+        error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+      if (!isUniqueConflict) {
+        throw error;
+      }
+      // Another small bill grabbed this number concurrently; retry with the next sequence.
+    }
+  }
+
+  return { success: false, error: "Could not generate a unique bill number. Please try again." };
 }
 
 export type UpdateInvoiceNumberResult = { success: true } | { success: false; error: string };

@@ -1,44 +1,66 @@
 import Link from "next/link";
 import { Plus, X } from "lucide-react";
 import RecentInvoicesTable from "@/components/dashboard/RecentInvoicesTable";
+import Pagination from "@/components/ui/Pagination";
+import StatusDateFilterBar from "@/components/ui/StatusDateFilterBar";
 import { getAllInvoices, type InvoiceTaxFolder } from "@/lib/invoices";
+import type { InvoiceStatus } from "@prisma/client";
 
 const TAX_FOLDERS: { value: InvoiceTaxFolder; label: string }[] = [
   { value: "all", label: "All Invoices" },
   { value: "vat", label: "VAT Bills" },
-  { value: "no-vat", label: "No VAT Bills" },
+  { value: "no-vat", label: "Non VAT Bills" },
 ];
+
+const STATUS_VALUES: InvoiceStatus[] = ["UNPAID", "PAID", "CANCELLED"];
 
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string; folder?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    q?: string;
+    folder?: string;
+    status?: string;
+    from?: string;
+    to?: string;
+  }>;
 }) {
-  const { page, q, folder } = await searchParams;
+  const { page, q, folder, status, from, to } = await searchParams;
   const requestedPage = Number(page) || 1;
   const taxFolder: InvoiceTaxFolder = TAX_FOLDERS.some((f) => f.value === folder)
     ? (folder as InvoiceTaxFolder)
     : "all";
+  const statusFilter = STATUS_VALUES.find((s) => s === status);
   const { invoices, pageCount, currentPage } = await getAllInvoices(
     requestedPage,
     q,
-    taxFolder
+    taxFolder,
+    statusFilter,
+    from,
+    to
   );
 
-  const pageHref = (targetPage: number) => {
+  // Every list/filter link below shares this — page position and folder are
+  // the only params each control chooses explicitly; status/from/to always
+  // carry through unchanged so switching folders (or paging) never drops an
+  // active status/date filter, and vice versa.
+  const buildHref = (overrides: { page?: number; folder?: InvoiceTaxFolder }) => {
     const params = new URLSearchParams();
-    params.set("page", String(targetPage));
+    const targetFolder = overrides.folder ?? taxFolder;
+    if (overrides.page && overrides.page > 1) params.set("page", String(overrides.page));
     if (q) params.set("q", q);
-    if (taxFolder !== "all") params.set("folder", taxFolder);
-    return `/invoices?${params.toString()}`;
-  };
-  const folderHref = (value: InvoiceTaxFolder) => {
-    const params = new URLSearchParams();
-    if (value !== "all") params.set("folder", value);
-    if (q) params.set("q", q);
+    if (targetFolder !== "all") params.set("folder", targetFolder);
+    if (status) params.set("status", status);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
     const qs = params.toString();
     return qs ? `/invoices?${qs}` : "/invoices";
   };
+  const pageHref = (targetPage: number) => buildHref({ page: targetPage });
+  const folderHref = (value: InvoiceTaxFolder) => buildHref({ folder: value });
+
+  const hasExtraFilters = Boolean(status || from || to);
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -82,6 +104,8 @@ export default async function InvoicesPage({
         ))}
       </div>
 
+      <StatusDateFilterBar />
+
       <RecentInvoicesTable
         title={
           q
@@ -92,45 +116,17 @@ export default async function InvoicesPage({
         emptyMessage={
           q
             ? "No invoices match your search."
-            : taxFolder === "vat"
-              ? "No VAT invoices yet."
-              : taxFolder === "no-vat"
-                ? "No non-VAT invoices yet."
-                : "No invoices yet. Create your first invoice to see it here."
+            : hasExtraFilters
+              ? "No invoices match the selected filters."
+              : taxFolder === "vat"
+                ? "No VAT invoices yet."
+                : taxFolder === "no-vat"
+                  ? "No non-VAT invoices yet."
+                  : "No invoices yet. Create your first invoice to see it here."
         }
       />
 
-      {pageCount > 1 && (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>
-            Page {currentPage} of {pageCount}
-          </span>
-          <div className="flex gap-2">
-            <Link
-              href={pageHref(currentPage - 1)}
-              aria-disabled={currentPage <= 1}
-              className={`rounded-md border border-border px-3 py-1.5 font-medium ${
-                currentPage <= 1
-                  ? "pointer-events-none opacity-40"
-                  : "hover:bg-surface-muted"
-              }`}
-            >
-              Previous
-            </Link>
-            <Link
-              href={pageHref(currentPage + 1)}
-              aria-disabled={currentPage >= pageCount}
-              className={`rounded-md border border-border px-3 py-1.5 font-medium ${
-                currentPage >= pageCount
-                  ? "pointer-events-none opacity-40"
-                  : "hover:bg-surface-muted"
-              }`}
-            >
-              Next
-            </Link>
-          </div>
-        </div>
-      )}
+      <Pagination currentPage={currentPage} pageCount={pageCount} hrefForPage={pageHref} />
     </div>
   );
 }

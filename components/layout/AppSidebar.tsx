@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   FilePlus2,
   FileText,
+  Receipt,
   Users,
   Package,
   Settings,
@@ -17,6 +18,7 @@ import Logo from "@/components/ui/Logo";
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, adminOnly: false },
   { href: "/invoices", label: "Invoices", icon: FileText, adminOnly: false },
+  { href: "/small-bills", label: "Small Bills", icon: Receipt, adminOnly: false },
   { href: "/customers", label: "Customers", icon: Users, adminOnly: false },
   { href: "/products", label: "Products", icon: Package, adminOnly: false },
   { href: "/users", label: "Users", icon: UserCog, adminOnly: true },

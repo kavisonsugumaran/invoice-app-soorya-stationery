@@ -20,7 +20,7 @@ export default async function InvoicePrintPage({
     getBusinessSettings(),
   ]);
 
-  if (!invoice) {
+  if (!invoice || invoice.billType !== "COMMERCIAL") {
     notFound();
   }
 
