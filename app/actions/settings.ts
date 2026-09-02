@@ -63,6 +63,38 @@ export async function updateDotMatrixCalibration(
   return { success: true };
 }
 
+export type SmallBillCalibrationInput = {
+  smallBillOffsetXMm: number;
+  smallBillOffsetYMm: number;
+};
+
+function validateSmallBillCalibration(input: SmallBillCalibrationInput): string | null {
+  if (!Number.isFinite(input.smallBillOffsetXMm) || !Number.isFinite(input.smallBillOffsetYMm)) {
+    return "Both offset values must be numbers.";
+  }
+  return null;
+}
+
+export async function updateSmallBillCalibration(
+  input: SmallBillCalibrationInput
+): Promise<UpdateCalibrationResult> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return { success: false, error: auth.error };
+
+  const validationError = validateSmallBillCalibration(input);
+  if (validationError) {
+    return { success: false, error: validationError };
+  }
+
+  await prisma.businessSettings.upsert({
+    where: { id: "default" },
+    update: { ...input },
+    create: { id: "default", businessName: "Your Business", ...input },
+  });
+
+  return { success: true };
+}
+
 export type BusinessProfileInput = {
   businessName: string;
   address: string;

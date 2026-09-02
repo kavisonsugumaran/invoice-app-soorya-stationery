@@ -1,16 +1,15 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, Printer } from "lucide-react";
-import InvoiceForm from "@/components/invoice-form/InvoiceForm";
+import SmallBillForm from "@/components/small-bill-form/SmallBillForm";
 import InvoiceStatusToggle from "@/components/invoices/InvoiceStatusToggle";
-import EditInvoiceNumberControl from "@/components/invoices/EditInvoiceNumberControl";
 import { getInvoiceById } from "@/lib/invoices";
 import { getBusinessSettings } from "@/lib/settings";
 import { getCustomerDirectory } from "@/lib/customers";
 import { getProductDirectory } from "@/lib/products";
 import { verifySession } from "@/lib/dal";
 
-export default async function InvoiceDetailPage({
+export default async function SmallBillDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -18,11 +17,11 @@ export default async function InvoiceDetailPage({
   const { id } = await params;
   const currentUser = await verifySession();
 
-  // Editing an existing invoice is Admin-only (enforced server-side in
-  // updateInvoice too) — send normal users straight to the read-only print
-  // view instead of showing them a form they can't submit.
+  // Editing is Admin-only (enforced server-side in updateInvoice too) —
+  // send normal users straight to the read-only print view instead of
+  // showing them a form they can't submit.
   if (currentUser.role !== "ADMIN") {
-    redirect(`/invoices/${id}/print`);
+    redirect(`/small-bills/${id}/print`);
   }
 
   const [invoice, business, customers, products] = await Promise.all([
@@ -32,19 +31,19 @@ export default async function InvoiceDetailPage({
     getProductDirectory(),
   ]);
 
-  if (!invoice || invoice.billType !== "COMMERCIAL") {
+  if (!invoice || invoice.billType !== "SMALL") {
     notFound();
   }
 
   return (
     <div className="flex flex-col items-center gap-6 p-6">
-      <div className="flex w-full max-w-4xl items-center justify-between">
+      <div className="flex w-full max-w-3xl items-center justify-between">
         <Link
-          href="/invoices"
+          href="/small-bills"
           className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft size={16} />
-          Back to Invoices
+          Back to Small Bills
         </Link>
         <div className="flex items-center gap-4">
           {invoice.createdBy && (
@@ -52,9 +51,8 @@ export default async function InvoiceDetailPage({
               Created by {invoice.createdBy.name}
             </span>
           )}
-          <EditInvoiceNumberControl invoiceId={invoice.id} invoiceNo={invoice.invoiceNo} />
           <Link
-            href={`/invoices/${invoice.id}/print`}
+            href={`/small-bills/${invoice.id}/print`}
             className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
           >
             <Printer size={16} />
@@ -64,36 +62,28 @@ export default async function InvoiceDetailPage({
         </div>
       </div>
 
-      <InvoiceForm
+      <SmallBillForm
         mode="edit"
         invoiceId={invoice.id}
         invoiceNo={invoice.invoiceNo}
         business={business}
+        calibration={{
+          smallBillOffsetXMm: business?.smallBillOffsetXMm ?? 0,
+          smallBillOffsetYMm: business?.smallBillOffsetYMm ?? 0,
+        }}
         customers={customers}
         products={products}
         initialData={{
-          billTo: {
-            name: invoice.customer?.name ?? "",
-            phone: invoice.customer?.phone ?? "",
-            address: invoice.customer?.address ?? "",
-            taxId: invoice.customer?.taxId ?? "",
-            customerId: invoice.customer?.id ?? null,
-          },
+          billToName: invoice.customer?.name ?? "",
+          phone: invoice.customer?.phone ?? "",
+          address: invoice.customer?.address ?? "",
+          taxId: invoice.customer?.taxId ?? "",
+          customerId: invoice.customer?.id ?? null,
           date: invoice.date.toISOString().slice(0, 10),
-          dateOfDelivery: invoice.dateOfDelivery
-            ? invoice.dateOfDelivery.toISOString().slice(0, 10)
-            : "",
-          placeOfSupply: invoice.placeOfSupply ?? "",
-          modeOfPayment: invoice.modeOfPayment ?? "",
-          additionalInfo: invoice.additionalInfo ?? "",
-          taxEnabled: invoice.taxEnabled,
-          taxPercent: invoice.taxPercent,
           items: invoice.items.map((item) => ({
-            reference: item.reference ?? "",
             name: item.name,
             price: item.price,
             quantity: item.quantity,
-            productId: item.productId ?? undefined,
           })),
         }}
       />

@@ -13,6 +13,11 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+enum BillType {
+  COMMERCIAL
+  SMALL
+}
+
 enum Role {
   ADMIN
   USER
@@ -32,6 +37,12 @@ model User {
 model Invoice {
   id             String        @id @default(cuid())
   invoiceNo      String        @unique
+  // COMMERCIAL = the existing VAT/non-VAT dot-matrix tax invoice flow
+  // (Gazette 2481/22 numbering). SMALL = the blank-paper "small bill"
+  // flow (Jollymark printer, E-prefixed numbering, no VAT). Same model
+  // for both so customer dedup, money math, and status tracking are
+  // shared — see CLAUDE.md / the small-bill feature plan.
+  billType       BillType      @default(COMMERCIAL)
   date           DateTime      @default(now())
   dateOfDelivery DateTime?
   placeOfSupply  String?
@@ -126,4 +137,13 @@ model BusinessSettings {
   // left) the further they are from the left margin, which dmOffsetXMm's
   // flat shift can't fix on its own. Default 1 = no change.
   dmScaleX       Float @default(1)
+
+  // Small-bill (Jollymark, 5.5in x 5.5in blank stock) print calibration —
+  // a flat X/Y nudge only, not the full dm* scale/font/row system above:
+  // that system exists because the dot-matrix print overlays fixed
+  // coordinates onto pre-printed stationery; the small-bill print instead
+  // flows a complete document from scratch onto blank paper, so only
+  // page-registration drift needs correcting, not per-field position.
+  smallBillOffsetXMm Float @default(0)
+  smallBillOffsetYMm Float @default(0)
 }

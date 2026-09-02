@@ -1,4 +1,5 @@
 import DotMatrixCalibrationForm from "@/components/settings/DotMatrixCalibrationForm";
+import SmallBillCalibrationForm from "@/components/settings/SmallBillCalibrationForm";
 import BusinessProfileForm from "@/components/settings/BusinessProfileForm";
 import ChangePasswordForm from "@/components/settings/ChangePasswordForm";
 import { getBusinessSettings } from "@/lib/settings";
@@ -19,6 +20,11 @@ export default async function SettingsPage() {
     dmScaleX: business?.dmScaleX ?? 1,
   };
 
+  const smallBillCalibrationInitial = {
+    smallBillOffsetXMm: business?.smallBillOffsetXMm ?? 0,
+    smallBillOffsetYMm: business?.smallBillOffsetYMm ?? 0,
+  };
+
   const profileInitial = {
     businessName: business?.businessName ?? "",
     address: business?.address ?? "",
@@ -36,6 +42,7 @@ export default async function SettingsPage() {
         <>
           <BusinessProfileForm initial={profileInitial} />
           <DotMatrixCalibrationForm initial={calibrationInitial} />
+          <SmallBillCalibrationForm initial={smallBillCalibrationInitial} />
         </>
       )}
     </div>

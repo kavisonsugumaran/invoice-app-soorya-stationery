@@ -5,6 +5,7 @@ import { resetDb } from "@/tests/reset-db";
 import { getCurrentUser } from "@/lib/dal";
 import {
   createInvoice,
+  createSmallBill,
   updateInvoice,
   updateInvoiceNumber,
   updateInvoiceStatus,
@@ -243,6 +244,129 @@ describe("upsertCustomer (via createInvoice)", () => {
     // live-joined customer now shows the latest address.
     expect(invoiceB?.customer?.address).toBe("New Address");
     expect(await prisma.customer.count()).toBe(1);
+  });
+});
+
+const baseSmallBillInput = {
+  billToName: "Small Bill Customer",
+  phone: "",
+  address: "",
+  taxId: "",
+  items: [{ name: "Test Item", price: 100, quantity: 2 }],
+};
+
+async function loginAsUser() {
+  const user = await createTestUser("USER");
+  mockedGetCurrentUser.mockResolvedValue({
+    id: user.id,
+    username: user.username,
+    name: user.name,
+    role: user.role,
+  });
+}
+
+describe("createSmallBill — numbering", () => {
+  it("assigns sequential E-prefixed serials, zero-padded to 3 digits", async () => {
+    await loginAsUser();
+
+    const first = await createSmallBill(baseSmallBillInput);
+    const second = await createSmallBill(baseSmallBillInput);
+    if (!first.success || !second.success) throw new Error("expected success");
+
+    expect(first.invoiceNo).toBe("E001");
+    expect(second.invoiceNo).toBe("E002");
+  });
+
+  it("scopes numbering to billType SMALL, ignoring commercial invoiceNo values", async () => {
+    await loginAsUser();
+
+    await createInvoice(baseInvoiceInput); // billType defaults COMMERCIAL, Gazette-format number
+    const smallBill = await createSmallBill(baseSmallBillInput);
+    if (!smallBill.success) throw new Error("expected success");
+
+    expect(smallBill.invoiceNo).toBe("E001");
+  });
+
+  it("overflows past 999 without truncating or colliding", async () => {
+    await prisma.invoice.createMany({
+      data: Array.from({ length: 999 }, (_, i) => ({
+        invoiceNo: `E${String(i + 1).padStart(3, "0")}`,
+        billType: "SMALL",
+        subtotal: 0,
+        taxAmount: 0,
+        total: 0,
+      })),
+    });
+    await loginAsUser();
+
+    const result = await createSmallBill(baseSmallBillInput);
+    if (!result.success) throw new Error("expected success");
+    expect(result.invoiceNo).toBe("E1000");
+  });
+
+  it("retries on a unique-constraint conflict (concurrent creation)", async () => {
+    await prisma.invoice.create({
+      data: { invoiceNo: "E001", billType: "SMALL", subtotal: 0, taxAmount: 0, total: 0 },
+    });
+    await loginAsUser();
+
+    const result = await createSmallBill(baseSmallBillInput);
+    if (!result.success) throw new Error("expected success");
+    expect(result.invoiceNo).toBe("E002");
+  });
+});
+
+describe("createSmallBill — status", () => {
+  it("defaults to UNPAID (Credit) when status is omitted", async () => {
+    await loginAsUser();
+
+    const result = await createSmallBill(baseSmallBillInput);
+    if (!result.success) throw new Error("expected success");
+
+    const invoice = await prisma.invoice.findUnique({ where: { id: result.id } });
+    expect(invoice?.status).toBe("UNPAID");
+  });
+
+  it("creates as PAID (Cash) when status: 'PAID' is passed", async () => {
+    await loginAsUser();
+
+    const result = await createSmallBill({ ...baseSmallBillInput, status: "PAID" });
+    if (!result.success) throw new Error("expected success");
+
+    const invoice = await prisma.invoice.findUnique({ where: { id: result.id } });
+    expect(invoice?.status).toBe("PAID");
+  });
+});
+
+describe("createSmallBill — data shape", () => {
+  it("always sets billType SMALL, taxEnabled false, and taxPercent 0", async () => {
+    await loginAsUser();
+
+    const result = await createSmallBill(baseSmallBillInput);
+    if (!result.success) throw new Error("expected success");
+
+    const invoice = await prisma.invoice.findUnique({ where: { id: result.id } });
+    expect(invoice?.billType).toBe("SMALL");
+    expect(invoice?.taxEnabled).toBe(false);
+    expect(invoice?.taxPercent).toBe(0);
+    expect(invoice?.subtotal).toBe(200);
+    expect(invoice?.total).toBe(200);
+  });
+
+  it("rejects when there is no authenticated user", async () => {
+    mockedGetCurrentUser.mockResolvedValue(null);
+
+    const result = await createSmallBill(baseSmallBillInput);
+
+    expect(result).toEqual({ success: false, error: "Please sign in." });
+  });
+
+  it("rejects an empty items list", async () => {
+    await loginAsUser();
+
+    const result = await createSmallBill({ ...baseSmallBillInput, items: [] });
+
+    expect(result).toEqual({ success: false, error: "At least one item is required." });
   });
 });
 
