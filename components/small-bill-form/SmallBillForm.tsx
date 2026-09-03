@@ -6,6 +6,7 @@ import { Plus, Trash2, X } from "lucide-react";
 import { createSmallBill, updateInvoice, type SmallBillItemInput } from "@/app/actions/invoices";
 import SmallBillPrint, { type SmallBillCalibration } from "@/components/small-bill-print/SmallBillPrint";
 import { computeInvoiceTotals, computeLineTotal } from "@/lib/invoice-math";
+import { SMALL_BILL_ITEMS_PER_PAGE } from "@/lib/small-bill";
 import { formatCurrency } from "@/lib/currency";
 import InitialsAvatar from "@/components/ui/InitialsAvatar";
 import CustomerAutocomplete, {
@@ -107,7 +108,7 @@ export default function SmallBillForm(props: SmallBillFormProps) {
     initial?.customerId ?? null
   );
   const [date, setDate] = useState(initial?.date ?? todayDateInputValue());
-  const [paymentType, setPaymentType] = useState<"CASH" | "CREDIT">("CREDIT");
+  const [paymentType, setPaymentType] = useState<"CASH" | "CREDIT">("CASH");
   const [error, setError] = useState<string | null>(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -209,6 +210,18 @@ export default function SmallBillForm(props: SmallBillFormProps) {
           status: paymentType === "CASH" ? "PAID" : "UNPAID",
         });
         if (result.success) {
+          // More than SMALL_BILL_ITEMS_PER_PAGE items: createSmallBill split
+          // the overflow into additional, independent bills for the same
+          // customer rather than one bill spanning multiple print pages —
+          // surface those extra numbers since only the first one is where
+          // this navigates.
+          if (result.additionalInvoiceNos?.length) {
+            showToast(
+              `Saved as ${[result.invoiceNo, ...result.additionalInvoiceNos].join(", ")} — split across ${
+                1 + result.additionalInvoiceNos.length
+              } bills (more than ${SMALL_BILL_ITEMS_PER_PAGE} items).`
+            );
+          }
           router.push(`/small-bills/${result.id}`);
         } else {
           setError(result.error);
@@ -445,7 +458,6 @@ export default function SmallBillForm(props: SmallBillFormProps) {
           calibration={calibration}
           billToName={billToName}
           items={previewItems}
-          total={total}
         />
       </div>
     </div>
