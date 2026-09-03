@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import type { Role } from "@prisma/client";
 import { requireAdmin, requireUser } from "@/lib/auth-guard";
 import { findUserByUsername } from "@/lib/users";
+import { createSession } from "@/lib/session";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -45,7 +46,9 @@ export async function createUser(input: CreateUserInput): Promise<CreateUserResu
 
   const passwordHash = await bcrypt.hash(input.password, 10);
   const user = await prisma.user.create({
-    data: { username, name, passwordHash, role: input.role },
+    // Set from JS (not left to a schema default) — see schema.prisma's note
+    // on passwordChangedAt about why a SQL-level default would be wrong here.
+    data: { username, name, passwordHash, role: input.role, passwordChangedAt: new Date() },
   });
 
   return { success: true, id: user.id };
@@ -79,7 +82,14 @@ export async function resetUserPassword(
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
   try {
-    await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    // passwordChangedAt logs out that user's other active sessions (any
+    // other shop computer signed in as them) on their next request — see
+    // lib/dal.ts's getCurrentUser(). Admin's own session is a different
+    // account, so it's unaffected; no need to reissue anything here.
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash, passwordChangedAt: new Date() },
+    });
     return { success: true };
   } catch {
     return { success: false, error: "Could not reset password." };
@@ -112,8 +122,20 @@ export async function changeOwnPassword(input: ChangePasswordInput): Promise<Act
   }
 
   const passwordHash = await bcrypt.hash(input.newPassword, 10);
+  const changedAt = new Date();
   try {
-    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+    // passwordChangedAt logs out this account's other active sessions (e.g.
+    // another shop computer left signed in) on their next request — see
+    // lib/dal.ts's getCurrentUser(). That check compares against the
+    // session's own start time, which for *this* session predates
+    // changedAt too, so without reissuing a fresh cookie below the person
+    // who just changed their own password would immediately get logged out
+    // of their own session as well.
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash, passwordChangedAt: changedAt },
+    });
+    await createSession(user.id);
     return { success: true };
   } catch {
     return { success: false, error: "Could not change password." };

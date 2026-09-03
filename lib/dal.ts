@@ -25,10 +25,28 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
 
   const user = await prisma.user.findUnique({
     where: { id: payload.userId },
-    select: { id: true, username: true, name: true, role: true, isActive: true },
+    select: {
+      id: true,
+      username: true,
+      name: true,
+      role: true,
+      isActive: true,
+      passwordChangedAt: true,
+    },
   });
 
   if (!user || !user.isActive) return null;
+
+  // Password changed (by this user, or an admin resetting it) after this
+  // session began — reject it immediately instead of trusting it until its
+  // idle/absolute timeout, same live-recheck reasoning as isActive above.
+  // changeOwnPassword reissues a fresh session for the account making the
+  // change, so this only ever logs out *other* sessions on the account.
+  // Null (no recorded password change since this field was introduced)
+  // means nothing to invalidate against.
+  if (user.passwordChangedAt && user.passwordChangedAt > new Date(payload.sessionStart)) {
+    return null;
+  }
 
   return { id: user.id, username: user.username, name: user.name, role: user.role };
 });

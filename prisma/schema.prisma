@@ -31,6 +31,34 @@ model User {
   role         Role
   isActive     Boolean   @default(true)
   createdAt    DateTime  @default(now())
+  // Set (from application code, in JS — see below) whenever passwordHash
+  // changes (createUser, resetUserPassword, changeOwnPassword — see
+  // app/actions/users.ts). Sessions are stateless signed JWTs
+  // (lib/session.ts) with no server-side revocation list, so changing a
+  // password alone doesn't invalidate any cookie already issued for this
+  // account — lib/dal.ts's getCurrentUser() compares this against the
+  // session's own sessionStart on every request to reject a now-stale
+  // session immediately, the same live-recheck pattern already used for
+  // isActive/role rather than waiting out the idle/absolute session timeout.
+  // Deliberately NOT `@default(now())`: this column is `timestamp without
+  // time zone` (Prisma's plain Postgres DateTime, matching every other
+  // DateTime in this schema), and Postgres evaluates a SQL-level
+  // now()/CURRENT_TIMESTAMP default in the server's *session* timezone —
+  // this project's DB runs with a non-UTC session timezone (confirmed:
+  // Asia/Colombo, UTC+5:30) — then stores those wall-clock digits with no
+  // zone info. Prisma reads that back as if it were already UTC, so a
+  // schema-level default would silently land hours ahead of true UTC
+  // instead of "now": every session's real, correctly-UTC sessionStart
+  // would compare as older than it and get rejected — every account locked
+  // out, not just a stale session on another computer, and not just once
+  // but until real time catches up to the skewed value. Application code
+  // setting this via `new Date()` and sending it as a query parameter
+  // doesn't hit that path (Postgres takes an explicit parameter's UTC
+  // digits literally for a tz-less column, no session-timezone conversion),
+  // so it's always correct — just never let this field acquire a SQL-level
+  // default again. Null on any row never explicitly set this way (nothing
+  // to invalidate against).
+  passwordChangedAt DateTime?
   invoices     Invoice[] @relation("InvoiceCreatedBy")
 }
 
