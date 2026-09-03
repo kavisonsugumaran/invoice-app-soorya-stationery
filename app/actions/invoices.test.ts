@@ -12,6 +12,7 @@ import {
   revertInvoiceToUnpaid,
   cancelInvoice,
 } from "./invoices";
+import { SMALL_BILL_ITEMS_PER_PAGE } from "@/lib/small-bill";
 
 vi.mock("@/lib/dal", () => ({
   getCurrentUser: vi.fn(),
@@ -367,6 +368,83 @@ describe("createSmallBill — data shape", () => {
     const result = await createSmallBill({ ...baseSmallBillInput, items: [] });
 
     expect(result).toEqual({ success: false, error: "At least one item is required." });
+  });
+});
+
+describe("createSmallBill — page splitting (SMALL_BILL_ITEMS_PER_PAGE overflow)", () => {
+  it("splits items past the per-page limit into a second, independent bill for the same customer", async () => {
+    await loginAsUser();
+
+    const items = Array.from({ length: SMALL_BILL_ITEMS_PER_PAGE + 5 }, (_, i) => ({
+      name: `Item ${i + 1}`,
+      price: 10,
+      quantity: 1,
+    }));
+
+    const result = await createSmallBill({ ...baseSmallBillInput, items });
+    if (!result.success) throw new Error("expected success");
+
+    expect(result.invoiceNo).toBe("E001");
+    expect(result.additionalInvoiceNos).toEqual(["E002"]);
+
+    const first = await prisma.invoice.findUnique({
+      where: { id: result.id },
+      include: { items: true },
+    });
+    const second = await prisma.invoice.findUnique({
+      where: { invoiceNo: "E002" },
+      include: { items: true },
+    });
+
+    expect(first?.items).toHaveLength(SMALL_BILL_ITEMS_PER_PAGE);
+    expect(second?.items).toHaveLength(5);
+    // Each page's total is its own items' total, not a running/cumulative
+    // total carried from the first bill.
+    expect(first?.total).toBe(SMALL_BILL_ITEMS_PER_PAGE * 10);
+    expect(second?.total).toBe(5 * 10);
+
+    // Same customer on both, and only one Customer row created — not a
+    // second, duplicate customer for the second bill.
+    expect(second?.customerId).toBe(first?.customerId);
+    expect(await prisma.customer.count()).toBe(1);
+  });
+
+  it("does not split when the item count is exactly the per-page limit", async () => {
+    await loginAsUser();
+
+    const items = Array.from({ length: SMALL_BILL_ITEMS_PER_PAGE }, (_, i) => ({
+      name: `Item ${i + 1}`,
+      price: 10,
+      quantity: 1,
+    }));
+
+    const result = await createSmallBill({ ...baseSmallBillInput, items });
+    if (!result.success) throw new Error("expected success");
+
+    expect(result.additionalInvoiceNos).toBeUndefined();
+    expect(await prisma.invoice.count()).toBe(1);
+  });
+
+  it("continues the same sequential numbering across three or more split bills", async () => {
+    await loginAsUser();
+
+    const items = Array.from({ length: SMALL_BILL_ITEMS_PER_PAGE * 2 + 1 }, (_, i) => ({
+      name: `Item ${i + 1}`,
+      price: 1,
+      quantity: 1,
+    }));
+
+    const result = await createSmallBill({ ...baseSmallBillInput, items });
+    if (!result.success) throw new Error("expected success");
+
+    expect(result.invoiceNo).toBe("E001");
+    expect(result.additionalInvoiceNos).toEqual(["E002", "E003"]);
+
+    // A bill created afterwards continues from the highest serial actually
+    // used, not from where the un-split single-bill counter would be.
+    const next = await createSmallBill(baseSmallBillInput);
+    if (!next.success) throw new Error("expected success");
+    expect(next.invoiceNo).toBe("E004");
   });
 });
 

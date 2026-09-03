@@ -9,6 +9,7 @@ import { createProductWithReference } from "@/app/actions/products";
 import { requireUser, requireAdmin } from "@/lib/auth-guard";
 import { tinError } from "@/lib/validation";
 import { normalizePhone } from "@/lib/phone-format";
+import { SMALL_BILL_ITEMS_PER_PAGE } from "@/lib/small-bill";
 
 export type InvoiceItemInput = {
   reference: string;
@@ -453,7 +454,18 @@ export type CreateSmallBillInput = {
 };
 
 export type CreateSmallBillResult =
-  | { success: true; id: string; invoiceNo: string }
+  | {
+      success: true;
+      id: string;
+      invoiceNo: string;
+      /**
+       * Set when the item count exceeded SMALL_BILL_ITEMS_PER_PAGE: the
+       * bill numbers of the additional, fully independent Invoice rows
+       * createSmallBill created for the overflow items (see below). `id`/
+       * `invoiceNo` above always refer to just the first one.
+       */
+      additionalInvoiceNos?: string[];
+    }
   | { success: false; error: string };
 
 function validateSmallBill(input: CreateSmallBillInput): string | null {
@@ -496,6 +508,15 @@ function validateSmallBill(input: CreateSmallBillInput): string | null {
  * unchanged; the only genuinely new logic here is the E-prefixed numbering
  * (highestExistingSmallBillSerial/formatSmallBillNo above) and the leaner
  * validation (no TIN/VAT/backfill concerns apply to a small bill).
+ *
+ * When the item count exceeds SMALL_BILL_ITEMS_PER_PAGE (one physical
+ * 5.5x5.5in sheet's worth), the overflow is NOT rendered as a second print
+ * page of the same Invoice row — per explicit product decision, a bill that
+ * spills onto a second sheet is a new, fully independent bill for the same
+ * customer (its own sequential E0XX number, its own page-local total), not
+ * a "continued" page of the first. So this splits `input.items` into
+ * page-sized chunks and creates one Invoice per chunk, all for the same
+ * customer/date/status, numbered consecutively.
  */
 export async function createSmallBill(
   input: CreateSmallBillInput
@@ -508,8 +529,6 @@ export async function createSmallBill(
     return { success: false, error: validationError };
   }
 
-  const { subtotal, taxAmount, total } = computeInvoiceTotals(input.items, false, 0);
-
   const customer = await upsertCustomer({
     name: input.billToName,
     phone: input.phone,
@@ -517,46 +536,83 @@ export async function createSmallBill(
     taxId: input.taxId,
     customerId: input.customerId,
   });
-  const resolvedItems = await resolveInvoiceItems(
-    input.items.map((item) => ({ ...item, reference: "" }))
-  );
 
-  const maxSerial = await highestExistingSmallBillSerial();
-
-  const MAX_ATTEMPTS = 5;
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const sequence = maxSerial + 1 + attempt;
-    const invoiceNo = formatSmallBillNo(sequence);
-
-    try {
-      const invoice = await prisma.invoice.create({
-        data: {
-          invoiceNo,
-          billType: "SMALL",
-          status: input.status ?? "UNPAID",
-          customerId: customer?.id ?? null,
-          createdByUserId: auth.user.id,
-          date: input.date ? new Date(input.date) : new Date(),
-          taxEnabled: false,
-          taxPercent: 0,
-          subtotal,
-          taxAmount,
-          total,
-          items: { create: resolvedItems },
-        },
-      });
-      return { success: true, id: invoice.id, invoiceNo };
-    } catch (error) {
-      const isUniqueConflict =
-        error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
-      if (!isUniqueConflict) {
-        throw error;
-      }
-      // Another small bill grabbed this number concurrently; retry with the next sequence.
-    }
+  const itemChunks: SmallBillItemInput[][] = [];
+  for (let i = 0; i < input.items.length; i += SMALL_BILL_ITEMS_PER_PAGE) {
+    itemChunks.push(input.items.slice(i, i + SMALL_BILL_ITEMS_PER_PAGE));
   }
 
-  return { success: false, error: "Could not generate a unique bill number. Please try again." };
+  // A single cursor carried across chunks (not re-read per chunk) so
+  // consecutive bills created in this same call always get consecutive
+  // numbers (E011, E012, ...) — mirrors the single-invoice retry loop's
+  // `sequence = maxSerial + 1 + attempt`, just continued across chunks
+  // instead of reset for each one.
+  let nextSequence = (await highestExistingSmallBillSerial()) + 1;
+  const createdInvoiceNos: string[] = [];
+  let firstId: string | null = null;
+
+  for (const chunk of itemChunks) {
+    const resolvedItems = await resolveInvoiceItems(
+      chunk.map((item) => ({ ...item, reference: "" }))
+    );
+    const { subtotal, taxAmount, total } = computeInvoiceTotals(chunk, false, 0);
+
+    let created: { id: string; invoiceNo: string } | null = null;
+    const MAX_ATTEMPTS = 5;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const invoiceNo = formatSmallBillNo(nextSequence);
+      try {
+        const invoice = await prisma.invoice.create({
+          data: {
+            invoiceNo,
+            billType: "SMALL",
+            status: input.status ?? "UNPAID",
+            customerId: customer?.id ?? null,
+            createdByUserId: auth.user.id,
+            date: input.date ? new Date(input.date) : new Date(),
+            taxEnabled: false,
+            taxPercent: 0,
+            subtotal,
+            taxAmount,
+            total,
+            items: { create: resolvedItems },
+          },
+        });
+        created = { id: invoice.id, invoiceNo };
+        nextSequence++;
+        break;
+      } catch (error) {
+        const isUniqueConflict =
+          error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+        if (!isUniqueConflict) {
+          throw error;
+        }
+        // Another small bill grabbed this number concurrently; retry with the next sequence.
+        nextSequence++;
+      }
+    }
+
+    if (!created) {
+      return {
+        success: false,
+        error:
+          createdInvoiceNos.length > 0
+            ? `Saved ${createdInvoiceNos.join(", ")}, but could not generate a unique number for the rest. Please try again.`
+            : "Could not generate a unique bill number. Please try again.",
+      };
+    }
+
+    firstId ??= created.id;
+    createdInvoiceNos.push(created.invoiceNo);
+  }
+
+  return {
+    success: true,
+    id: firstId!,
+    invoiceNo: createdInvoiceNos[0],
+    additionalInvoiceNos:
+      createdInvoiceNos.length > 1 ? createdInvoiceNos.slice(1) : undefined,
+  };
 }
 
 export type UpdateInvoiceNumberResult = { success: true } | { success: false; error: string };

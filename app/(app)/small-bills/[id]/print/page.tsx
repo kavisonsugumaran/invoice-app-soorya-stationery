@@ -62,7 +62,6 @@ export default async function SmallBillPrintPage({
             price: item.price,
             quantity: item.quantity,
           }))}
-          total={invoice.total}
         />
       </div>
     </div>
