@@ -36,9 +36,8 @@ export default function AppSidebar({ role }: { role: Role }) {
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
-      <div className="flex items-center gap-2 px-5 py-5">
-        <Logo size={32} />
-        <span className="text-base font-semibold">KadeBill</span>
+      <div className="flex items-center justify-center px-5 py-5">
+        <Logo height={60} />
       </div>
 
       <div className="px-3 pb-3">

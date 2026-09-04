@@ -8,9 +8,8 @@ import TopbarSearch from "@/components/layout/TopbarSearch";
 export default function AppTopbar({ user }: { user: CurrentUser }) {
   return (
     <header className="flex h-14 items-center justify-between gap-4 border-b border-border bg-surface px-4 md:px-6">
-      <Link href="/" className="flex items-center gap-2 md:hidden">
-        <Logo size={28} />
-        <span className="text-sm font-semibold">KadeBill</span>
+      <Link href="/" className="flex items-center md:hidden">
+        <Logo height={36} />
       </Link>
 
       <Suspense fallback={<div className="flex-1 max-w-sm" />}>
