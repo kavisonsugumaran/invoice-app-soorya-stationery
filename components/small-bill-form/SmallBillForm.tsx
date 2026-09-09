@@ -457,6 +457,7 @@ export default function SmallBillForm(props: SmallBillFormProps) {
           business={business}
           calibration={calibration}
           billToName={billToName}
+          date={date ? new Date(date) : undefined}
           items={previewItems}
         />
       </div>
