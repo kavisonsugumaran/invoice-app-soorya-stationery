@@ -607,6 +607,7 @@ export default function InvoiceForm(props: InvoiceFormProps) {
             dmScaleX: business?.dmScaleX ?? 1,
           }}
           billTo={{ name: billToName, phone: billToPhone, address: billToAddress, taxId: billToTaxId }}
+          date={date ? new Date(date) : undefined}
           dateOfDelivery={dateOfDelivery ? new Date(dateOfDelivery) : null}
           placeOfSupply={placeOfSupply}
           modeOfPayment={modeOfPayment}
