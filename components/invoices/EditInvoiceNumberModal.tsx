@@ -5,8 +5,6 @@ import Modal from "@/components/ui/Modal";
 import { updateInvoiceNumber } from "@/app/actions/invoices";
 import { useToast } from "@/components/ui/ToastProvider";
 
-// TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md).
-// Remove alongside EditInvoiceNumberControl once the backfill is finished.
 export default function EditInvoiceNumberModal({
   invoiceId,
   currentInvoiceNo,
@@ -20,6 +18,7 @@ export default function EditInvoiceNumberModal({
 }) {
   const { showToast } = useToast();
   const [invoiceNo, setInvoiceNo] = useState(currentInvoiceNo);
+  const [password, setPassword] = useState("");
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent) {
@@ -27,12 +26,13 @@ export default function EditInvoiceNumberModal({
 
     startTransition(async () => {
       const trimmed = invoiceNo.trim();
-      const result = await updateInvoiceNumber(invoiceId, trimmed);
+      const result = await updateInvoiceNumber(invoiceId, trimmed, password);
       if (result.success) {
         showToast("Invoice number updated.");
         onSuccess(trimmed);
       } else {
         showToast(result.error, "error");
+        setPassword("");
       }
     });
   }
@@ -41,8 +41,8 @@ export default function EditInvoiceNumberModal({
     <Modal title="Edit Invoice Number" onClose={onClose}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">
-          Temporary while old handwritten invoices are being backfilled — corrects a typo or
-          mismatch in this invoice&apos;s number.
+          Invoice numbers are generated automatically and shouldn&apos;t normally need changing.
+          Correcting one here requires an admin password to authorize it.
         </p>
 
         <div className="flex flex-col gap-1.5">
@@ -56,6 +56,24 @@ export default function EditInvoiceNumberModal({
             onChange={(e) => setInvoiceNo(e.target.value)}
             maxLength={40}
             autoFocus
+            required
+            className="rounded-md border border-border bg-transparent px-3 py-2 text-sm"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label
+            className="text-sm font-medium text-muted-foreground"
+            htmlFor="edit-invoice-no-admin-password"
+          >
+            Admin Password
+          </label>
+          <input
+            id="edit-invoice-no-admin-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
             required
             className="rounded-md border border-border bg-transparent px-3 py-2 text-sm"
           />

@@ -40,24 +40,6 @@ export type CreateInvoiceInput = {
   placeOfSupply: string;
   modeOfPayment: string;
   additionalInfo: string;
-  /**
-   * TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md):
-   * when true, skips Gazette-format numbering entirely and uses oldInvoiceNo
-   * (typed in by the client to match their handwritten paper copy) as the
-   * invoice number directly, so backfilling old handwritten invoices never
-   * advances the real counter new invoices rely on. Remove this flag (and
-   * its handling below) once the backfill is finished.
-   */
-  isOldInvoice?: boolean;
-  /**
-   * TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md):
-   * required when isOldInvoice is true. Used verbatim as the invoice number
-   * (a single create attempt, not the retry-and-increment Gazette loop) —
-   * client enters it directly rather than getting an auto-assigned
-   * placeholder to be corrected in the DB later. Remove alongside
-   * isOldInvoice once the backfill is finished.
-   */
-  oldInvoiceNo?: string;
 };
 
 export type CreateInvoiceResult =
@@ -186,17 +168,6 @@ function validate(input: CreateInvoiceInput): string | null {
   if (input.taxEnabled) {
     if (!Number.isFinite(input.taxPercent) || input.taxPercent < 0 || input.taxPercent > 100) {
       return "Tax percent must be between 0 and 100.";
-    }
-  }
-
-  // TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md).
-  if (input.isOldInvoice) {
-    const trimmed = (input.oldInvoiceNo ?? "").trim();
-    if (!trimmed) {
-      return "Invoice number is required for a backfilled paper invoice.";
-    }
-    if (trimmed.length > 40) {
-      return "Invoice number must be 40 characters or fewer.";
     }
   }
 
@@ -369,31 +340,9 @@ export async function createInvoice(
     items: { create: resolvedItems },
   });
 
-  // TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md).
-  // Client types the invoice number directly (validate() already required
-  // it above) — a single create attempt, not the retry-and-increment
-  // Gazette loop below, since there's no sequence to advance on conflict.
-  if (input.isOldInvoice) {
-    const manualInvoiceNo = input.oldInvoiceNo!.trim();
-    try {
-      const invoice = await prisma.invoice.create({ data: invoiceData(manualInvoiceNo) });
-      return { success: true, id: invoice.id, invoiceNo: manualInvoiceNo };
-    } catch (error) {
-      const isUniqueConflict =
-        error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
-      if (!isUniqueConflict) {
-        throw error;
-      }
-      return {
-        success: false,
-        error: `Invoice number "${manualInvoiceNo}" is already in use. Check for a typo or duplicate entry.`,
-      };
-    }
-  }
-
   const businessSettings = await prisma.businessSettings.findUnique({
     where: { id: "default" },
-    select: { invoiceUnitCode: true, tempInvoiceSerialFloorAugust2026: true },
+    select: { invoiceUnitCode: true },
   });
   const unitCode = (businessSettings?.invoiceUnitCode || DEFAULT_INVOICE_UNIT_CODE).slice(
     0,
@@ -403,17 +352,7 @@ export async function createInvoice(
   const yearMonth = invoiceYearMonthPrefix();
   const prefix = `${yearMonth}_${unitCode}_`;
 
-  const maxSerial = await highestExistingSerial(prefix);
-  // TEMPORARY (Aug 2026 backfill — see schema.prisma's comment on this
-  // field). Only takes effect where explicitly set (production), and only
-  // for August — never a blanket "if the calendar says August" check.
-  // Based on the highest existing serial, not a row count: the floor
-  // creates a deliberate gap (18 real rows vs. serials starting at 422),
-  // and a row count would stay stuck below the floor for hundreds of
-  // invoices, colliding and needing one more retry each time until the
-  // retry limit is exceeded and invoice creation starts failing outright.
-  const floor = businessSettings?.tempInvoiceSerialFloorAugust2026;
-  const baseSequence = yearMonth === "26AUG" && floor ? Math.max(maxSerial, floor - 1) : maxSerial;
+  const baseSequence = await highestExistingSerial(prefix);
 
   const MAX_ATTEMPTS = 5;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -618,18 +557,28 @@ export async function createSmallBill(
 export type UpdateInvoiceNumberResult = { success: true } | { success: false; error: string };
 
 /**
- * TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md):
- * lets any authenticated staff member correct an invoice's invoiceNo directly
- * (e.g. a typo in a client-typed old-invoice number) — narrower than the
- * full updateInvoice(), which stays admin-only. Remove once the backfill is
- * finished and invoice numbers no longer need manual correction.
+ * Lets any logged-in staff member correct an invoice's invoiceNo directly —
+ * narrower than full invoice editing (which stays admin-only) — but only
+ * with an admin password to authorize it, same
+ * any-active-admin/not-necessarily-the-caller's-own-password pattern as
+ * cancelInvoice()/revertInvoiceToUnpaid() (see verifyAnyAdminPassword
+ * below): a staff member gets a manager to type their password at the till
+ * rather than needing to already be an admin themselves. Invoice numbers
+ * are auto-generated (see createInvoice's Gazette-format numbering) and not
+ * meant to be hand-edited in the ordinary course of business — this exists
+ * for the rare correction, gated accordingly.
  */
 export async function updateInvoiceNumber(
   invoiceId: string,
-  newInvoiceNo: string
+  newInvoiceNo: string,
+  adminPassword: string
 ): Promise<UpdateInvoiceNumberResult> {
   const auth = await requireUser();
   if (!auth.ok) return { success: false, error: auth.error };
+
+  if (!(await verifyAnyAdminPassword(adminPassword))) {
+    return { success: false, error: "Incorrect password." };
+  }
 
   const trimmed = newInvoiceNo.trim();
   if (!trimmed) {
@@ -738,12 +687,12 @@ export async function updateInvoiceStatus(
   }
 }
 
-// Both revertInvoiceToUnpaid() and cancelInvoice() are available to any
-// logged-in user (not admin-only) — the gate is this password check, not the
-// role. It's checked against every active admin's password, not necessarily
-// the current user's own, since the point is a staff member getting a
-// manager/admin to authorize the action at the till, not the staff member
-// needing to already be an admin themselves.
+// revertInvoiceToUnpaid(), cancelInvoice(), and updateInvoiceNumber() are all
+// available to any logged-in user (not admin-only) — the gate is this
+// password check, not the role. It's checked against every active admin's
+// password, not necessarily the current user's own, since the point is a
+// staff member getting a manager/admin to authorize the action at the till,
+// not the staff member needing to already be an admin themselves.
 async function verifyAnyAdminPassword(password: string): Promise<boolean> {
   const admins = await prisma.user.findMany({
     where: { role: "ADMIN", isActive: true },

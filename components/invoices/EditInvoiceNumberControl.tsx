@@ -5,10 +5,9 @@ import { useRouter } from "next/navigation";
 import { Pencil } from "lucide-react";
 import EditInvoiceNumberModal from "@/components/invoices/EditInvoiceNumberModal";
 
-// TEMPORARY (Aug 2026 backfill — see memory/temp_invoice_backfill_2026_08.md).
 // Lets any staff member (not just admins) fix an invoice's number directly —
-// narrower than full invoice editing, which stays admin-only. Remove this
-// component (and its two usages) once the backfill is finished.
+// narrower than full invoice editing, which stays admin-only — but only
+// with an admin password to authorize it (see updateInvoiceNumber()).
 export default function EditInvoiceNumberControl({
   invoiceId,
   invoiceNo,
