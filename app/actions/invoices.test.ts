@@ -87,8 +87,10 @@ describe("createInvoice", () => {
     expect(result).toEqual({ success: false, error: "Please sign in." });
   });
 
-  // Gazette Extraordinary No. 2481/22: YYMMM_QQQQ_XXXXX, <=40 chars, no spaces.
-  const GAZETTE_2481_22_FORMAT = /^\d{2}[A-Z]{3}_[A-Z0-9]+_\d{5}$/;
+  // Gazette Extraordinary No. 2481/22: YYMMM_QQQQ_XXXX, <=40 chars, no spaces.
+  // Serial is 4 digits now (was 5 pre-2026-09); \d{4,} also allows a >9999
+  // month rolling to a wider serial.
+  const GAZETTE_2481_22_FORMAT = /^\d{2}[A-Z]{3}_[A-Z0-9]+_\d{4,}$/;
 
   it("generates an invoice number matching the Gazette 2481/22 format, falling back to the default unit code when no BusinessSettings row exists", async () => {
     const user = await createTestUser("USER");
@@ -143,8 +145,8 @@ describe("createInvoice", () => {
     if (!first.success || !second.success) throw new Error("expected success");
 
     const prefix = first.invoiceNo.slice(0, first.invoiceNo.lastIndexOf("_") + 1);
-    expect(second.invoiceNo).toBe(`${prefix}00002`);
-    expect(first.invoiceNo).toBe(`${prefix}00001`);
+    expect(second.invoiceNo).toBe(`${prefix}0002`);
+    expect(first.invoiceNo).toBe(`${prefix}0001`);
   });
 
   it("sets the invoice date from input.date, defaulting to now when omitted", async () => {

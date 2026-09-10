@@ -145,7 +145,7 @@ async function main() {
     const yearMonthPrefix = `${String(date.getFullYear()).slice(-2)}${MONTH_ABBR[date.getMonth()]}_SST_`;
     const seq = (monthCounters.get(yearMonthPrefix) ?? 0) + 1;
     monthCounters.set(yearMonthPrefix, seq);
-    const invoiceNo = `${yearMonthPrefix}${String(seq).padStart(5, "0")}`;
+    const invoiceNo = `${yearMonthPrefix}${String(seq).padStart(4, "0")}`;
 
     const itemCount = randomInt(1, 4);
     const items = Array.from({ length: itemCount }, () => {
