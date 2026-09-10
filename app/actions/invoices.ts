@@ -49,13 +49,19 @@ export type CreateInvoiceResult =
 const INVOICE_TIME_ZONE = "Asia/Colombo";
 
 // Invoice number format per Gazette Extraordinary No. 2481/22 (effective
-// 2026-07-01): YYMMM_QQQQ_XXXXX — YY+MMM (year + uppercase month) with no
+// 2026-07-01): YYMMM_QQQQ_XXXX — YY+MMM (year + uppercase month) with no
 // separator between them, then the business's unit/branch code, then a
 // zero-padded serial. The counter resets monthly (the prefix is YYMMM, not
 // a full date), unlike the old per-day INV-YYYYMMDD-NN scheme this replaces.
 const DEFAULT_INVOICE_UNIT_CODE = "SST";
 const INVOICE_UNIT_CODE_MAX_LEN = 10; // keeps the total well under the gazette's 40-char cap
-const INVOICE_SERIAL_DIGITS = 5;
+// Zero-padding width for the monthly serial, not a hard cap — the shop does
+// ~300-400 invoices/month, so 4 digits (0001..9999) is comfortable; padStart
+// just stops padding past that, so a freak >9999 month rolls to 10000 with
+// no collision. Was 5 digits until 2026-09; invoices numbered before the
+// switch keep their _00001..-style serials and were not renumbered (issued
+// tax documents), so a given month can span both widths at the boundary.
+const INVOICE_SERIAL_DIGITS = 4;
 
 function invoiceYearMonthPrefix(): string {
   const parts = new Intl.DateTimeFormat("en-US", {
