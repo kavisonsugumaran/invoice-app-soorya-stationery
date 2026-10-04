@@ -3,6 +3,7 @@ import { Plus, X } from "lucide-react";
 import RecentInvoicesTable from "@/components/dashboard/RecentInvoicesTable";
 import Pagination from "@/components/ui/Pagination";
 import StatusDateFilterBar from "@/components/ui/StatusDateFilterBar";
+import ExportInvoicesButton from "@/components/invoices/ExportInvoicesButton";
 import { getAllInvoices, type InvoiceTaxFolder } from "@/lib/invoices";
 import type { InvoiceStatus } from "@prisma/client";
 
@@ -79,13 +80,16 @@ export default async function InvoicesPage({
             </Link>
           )}
         </div>
-        <Link
-          href="/invoices/new"
-          className="flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-        >
-          <Plus size={16} />
-          New Invoice
-        </Link>
+        <div className="flex items-center gap-2">
+          <ExportInvoicesButton from={from} to={to} folder={taxFolder} status={statusFilter} />
+          <Link
+            href="/invoices/new"
+            className="flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+          >
+            <Plus size={16} />
+            New Invoice
+          </Link>
+        </div>
       </div>
 
       <div className="flex gap-1 print:hidden">

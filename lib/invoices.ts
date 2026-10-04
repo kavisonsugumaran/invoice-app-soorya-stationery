@@ -9,7 +9,10 @@ import { prisma } from "@/lib/prisma";
  * end-of-day bound, it would parse in the server's local timezone instead,
  * silently shifting the boundary by that offset.
  */
-function dateRangeFilter(dateFrom?: string, dateTo?: string): Prisma.DateTimeFilter | undefined {
+export function dateRangeFilter(
+  dateFrom?: string,
+  dateTo?: string
+): Prisma.DateTimeFilter | undefined {
   const filter: Prisma.DateTimeFilter = {};
   if (dateFrom) filter.gte = new Date(dateFrom);
   if (dateTo) filter.lte = new Date(`${dateTo}T23:59:59.999Z`);
